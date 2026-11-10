@@ -61,7 +61,8 @@ npm run dev
 `test-results/e2e*` 与 `test-results/crash/user-data` 作为隔离数据目录，不会
 写入正常用户数据。`test:e2e` 覆盖安全边界、真实 CLI、项目与终端缓冲、双 PTY
 切换、进程树清理、托盘和重启持久化；`test:e2e:crash` 会强制结束应用主进程，
-验证 Job Object 级联清理，并确认重启后旧会话被标记为已结束。
+验证当前跟踪的单棵 PTY/Claude 进程树被 Job Object 级联清理，并确认重启后
+旧会话被标记为已结束。
 
 打包后可针对真实可执行文件复用两类 E2E：
 
@@ -133,6 +134,10 @@ rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` �
 - 安装包与便携版已生成，但当前只对 `win-unpacked` 产物执行了完整 E2E。
 - 新建会话、搜索、设置和布局切换快捷键当前固定，未提供可视化自定义入口。
 - 诊断页展示 `claude doctor` 的用途和手动命令，但未提供应用内一键执行按钮。
+- 默认加载 PowerShell Profile；若受信 Profile 在 PTY 加入 Job Object 前自行
+  启动了持久或分离进程，这些进程不在已验证的崩溃清理路径内。
+- 崩溃 E2E 当前只跟踪一个 PTY 根进程及其 Claude 后代；多 PTY 同时崩溃清理
+  尚未作为专项测试执行。
 - 安装包未签名；当前无自动更新、云同步、远程控制、内置编辑器或 Git 图形界面。
 - `npm audit` 的生产依赖为 0 漏洞；开发依赖 `electron-builder` 的打包工具链
   仍有 6 个 moderate 级传递依赖告警，不进入运行时产物。
