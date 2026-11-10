@@ -128,8 +128,8 @@
 
 | 产物 | 大小 | SHA-256 | 检查结果 |
 | --- | ---: | --- | --- |
-| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,802 bytes | `BBB50FD76391DB141BA99F6ECFC7C2EFEFDFFFCD6E93D4B11ADFB3D97CFEFA56` | 未安装执行 |
-| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,445,752 bytes | `750419DE43FD8708C97B174FD54E2EE4100FB9128522BA6F2C2D0171EED9A69E` | 未直接启动 |
+| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,979 bytes | `C32DDFDAD1026B87EA622E6E7906734510974982175F525338E0300AAB41DD3D` | 未安装执行 |
+| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,449,120 bytes | `D33A150B4EF014276FBB4193D161031FB79E689D147862D4D2BCF0C4D3D1972F` | 未直接启动 |
 | `release/win-unpacked/Claude Terminal Desktop.exe` | 解包目录 | 随 `app.asar` 构建生成 | 已真实启动并通过完整 E2E 与崩溃 E2E |
 | node-pty / ConPTY 原生文件 | - | - | 已 unpack 到 `app.asar.unpacked` 并可运行 |
 

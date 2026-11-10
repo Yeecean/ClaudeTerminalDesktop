@@ -79,8 +79,8 @@ node scripts/crash-smoke.mjs
 
 | 产物 | 大小 | SHA-256 |
 | --- | ---: | --- |
-| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,802 bytes | `BBB50FD76391DB141BA99F6ECFC7C2EFEFDFFFCD6E93D4B11ADFB3D97CFEFA56` |
-| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,445,752 bytes | `750419DE43FD8708C97B174FD54E2EE4100FB9128522BA6F2C2D0171EED9A69E` |
+| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,979 bytes | `C32DDFDAD1026B87EA622E6E7906734510974982175F525338E0300AAB41DD3D` |
+| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,449,120 bytes | `D33A150B4EF014276FBB4193D161031FB79E689D147862D4D2BCF0C4D3D1972F` |
 | `release/win-unpacked/Claude Terminal Desktop.exe` | 解包目录 | 随 `app.asar` 构建生成 |
 
 旧的过期产物已清理。当前产物未做代码签名，Windows SmartScreen 可能显示未知
