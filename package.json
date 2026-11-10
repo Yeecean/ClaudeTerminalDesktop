@@ -10,6 +10,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "build": "npm run typecheck && electron-vite build",
+    "check:pty": "electron scripts/native-pty-check.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && node scripts/e2e-smoke.mjs",

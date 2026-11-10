@@ -66,6 +66,15 @@ export interface AppSettings {
   }
 }
 
+export interface SettingsPatch {
+  themeMode?: ThemeMode
+  layoutMode?: LayoutMode
+  gui?: Partial<AppSettings['gui']>
+  terminal?: Partial<AppSettings['terminal']>
+  shell?: Partial<AppSettings['shell']>
+  window?: Partial<AppSettings['window']>
+}
+
 export interface ShellDiagnostic {
   kind: AppSettings['shell']['kind']
   label: string
