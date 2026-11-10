@@ -98,6 +98,8 @@ export interface EnvironmentDiagnostic {
   appVersion: string
   shells: ShellDiagnostic[]
   cli: CliDiagnostic
+  jobGuardActive: boolean
+  jobGuardError: string | null
   configDirInherited: boolean
 }
 

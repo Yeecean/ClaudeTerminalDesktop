@@ -1,12 +1,18 @@
 import {
+  app,
   BrowserWindow,
   clipboard,
   dialog,
   ipcMain,
   type IpcMainInvokeEvent
 } from 'electron'
+import { join } from 'node:path'
 import { IPC } from '../shared/channels'
 import type { CreateSessionInput, EnvironmentDiagnostic } from '../shared/types'
+import {
+  developmentOrigin,
+  isTrustedRendererUrl
+} from './renderer-trust'
 import type { AppStore } from './store'
 import type { SessionService } from './session-service'
 
@@ -27,6 +33,13 @@ function assertTrustedSender(
   if (event.sender !== window.webContents) throw new Error('拒绝来自未知窗口的 IPC 请求。')
   if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
     throw new Error('拒绝来自未知文档框架的 IPC 请求。')
+  }
+  const rendererFile = join(__dirname, '../renderer/index.html')
+  const devOrigin = app.isPackaged
+    ? null
+    : developmentOrigin(process.env.ELECTRON_RENDERER_URL)
+  if (!isTrustedRendererUrl(event.senderFrame.url, rendererFile, devOrigin)) {
+    throw new Error('拒绝来自不可信页面的 IPC 请求。')
   }
 }
 

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
 
@@ -126,6 +126,25 @@ export class PtyManager {
     return [...this.processes.values()].map((entry) => entry.terminal.pid)
   }
 
+  activeSessionIds(): string[] {
+    return [...this.processes.keys()]
+  }
+
+  forceKill(sessionId: string): void {
+    const processEntry = this.processes.get(sessionId)
+    if (!processEntry) return
+    const pid = processEntry.terminal.pid
+    spawnSync(
+      `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\taskkill.exe`,
+      ['/PID', String(pid), '/T', '/F'],
+      {
+        windowsHide: true,
+        stdio: 'ignore',
+        timeout: 5000
+      }
+    )
+  }
+
   kill(sessionId: string): void {
     const processEntry = this.processes.get(sessionId)
     if (!processEntry || processEntry.closing) return
@@ -135,17 +154,9 @@ export class PtyManager {
       processEntry.terminal.kill()
     } catch {}
 
-    const pid = processEntry.terminal.pid
     processEntry.forcedKillTimer = setTimeout(() => {
       if (!this.processes.has(sessionId)) return
-      spawn(
-        `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\taskkill.exe`,
-        ['/PID', String(pid), '/T', '/F'],
-        {
-          windowsHide: true,
-          stdio: 'ignore'
-        }
-      ).on('error', () => {})
+      this.forceKill(sessionId)
     }, 900)
     processEntry.forcedKillTimer.unref()
   }

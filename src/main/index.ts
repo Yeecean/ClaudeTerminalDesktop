@@ -11,16 +11,28 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { collectEnvironmentDiagnostics } from './diagnostics'
 import { registerIpc } from './ipc'
+import { startJobGuard, type JobGuard } from './job-guard'
+import {
+  developmentOrigin,
+  isTrustedRendererUrl
+} from './renderer-trust'
 import { SessionService } from './session-service'
 import { AppStore } from './store'
 import { IPC } from '../shared/channels'
 import { DEFAULT_SETTINGS } from '../shared/defaults'
 import type { SessionRecord } from '../shared/types'
 
+const testMode =
+  process.env.CTD_E2E === '1' && process.argv.includes('--ctd-e2e')
+const rendererFilePath = join(__dirname, '../renderer/index.html')
+const trustedDevelopmentOrigin = app.isPackaged
+  ? null
+  : developmentOrigin(process.env.ELECTRON_RENDERER_URL)
+
 app.setName('ClaudeTerminalDesktop')
 app.setPath(
   'userData',
-  process.env.CTD_E2E === '1' && process.env.CTD_USER_DATA_DIR
+  testMode && process.env.CTD_USER_DATA_DIR
     ? resolve(process.env.CTD_USER_DATA_DIR)
     : join(app.getPath('appData'), 'ClaudeTerminalDesktop')
 )
@@ -29,6 +41,7 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: AppStore | null = null
 let sessionService: SessionService | null = null
+let jobGuard: JobGuard | null = null
 let allowQuit = false
 let quitInProgress = false
 
@@ -101,7 +114,7 @@ function createTray(): void {
 async function requestQuit(): Promise<void> {
   if (quitInProgress) return
 
-  const activeCount = process.env.CTD_E2E === '1' ? 0 : (sessionService?.activeCount() ?? 0)
+  const activeCount = testMode ? 0 : (sessionService?.activeCount() ?? 0)
   if (activeCount > 0) {
     const options = {
       type: 'warning' as const,
@@ -128,10 +141,32 @@ async function requestQuit(): Promise<void> {
   try {
     await sessionService?.endAll()
     store?.shutdown()
-  } finally {
-    allowQuit = true
-    app.quit()
+    await jobGuard?.stop()
+  } catch (error) {
+    quitInProgress = false
+    const message =
+      error instanceof Error ? error.message : '无法结束全部终端进程。'
+    const detail =
+      '应用将继续运行，避免留下无法管理的后台进程。请在任务管理器中检查 PowerShell 或 Claude 进程后重试。'
+    const parent =
+      mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+        ? mainWindow
+        : undefined
+    if (parent) {
+      await dialog.showMessageBox(parent, {
+        type: 'error',
+        title: '无法安全退出',
+        message,
+        detail,
+        buttons: ['知道了']
+      })
+    } else {
+      dialog.showErrorBox('无法安全退出', `${message}\n\n${detail}`)
+    }
+    return
   }
+  allowQuit = true
+  app.exit(0)
 }
 
 function createWindow(): void {
@@ -186,13 +221,25 @@ function createWindow(): void {
 
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event, navigationUrl) => {
-    if (navigationUrl !== window.webContents.getURL()) event.preventDefault()
+    if (
+      !isTrustedRendererUrl(
+        navigationUrl,
+        rendererFilePath,
+        trustedDevelopmentOrigin
+      )
+    ) {
+      event.preventDefault()
+    }
   })
 
-  if (process.env.ELECTRON_RENDERER_URL) {
+  if (
+    !app.isPackaged &&
+    process.env.ELECTRON_RENDERER_URL &&
+    trustedDevelopmentOrigin
+  ) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
+    void window.loadFile(rendererFilePath)
   }
 }
 
@@ -202,34 +249,45 @@ async function initialize(): Promise<void> {
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false)
   )
+  jobGuard = startJobGuard(
+    resourcePath('job-watchdog.ps1'),
+    process.pid,
+    join(app.getPath('userData'), 'job-guard')
+  )
+  await jobGuard.ready
 
   store = new AppStore(app.getPath('userData'))
-  sessionService = new SessionService(store, {
-    onData: (sessionId, data) => {
-      sendToRenderer(IPC.ptyData, { sessionId, data })
+  sessionService = new SessionService(
+    store,
+    {
+      onData: (sessionId, data) => {
+        sendToRenderer(IPC.ptyData, { sessionId, data })
+      },
+      onExit: (sessionRecord: SessionRecord, exitCode, signal) => {
+        sendToRenderer(IPC.ptyExit, {
+          sessionId: sessionRecord.id,
+          exitCode,
+          signal
+        })
+      },
+      onStateChanged: () => {
+        if (!store) return
+        sendToRenderer(IPC.stateChanged, {
+          projects: store.getProjects(),
+          sessions: store.getSessions()
+        })
+        updateTrayMenu()
+      }
     },
-    onExit: (sessionRecord: SessionRecord, exitCode, signal) => {
-      sendToRenderer(IPC.ptyExit, {
-        sessionId: sessionRecord.id,
-        exitCode,
-        signal
-      })
-    },
-    onStateChanged: () => {
-      if (!store) return
-      sendToRenderer(IPC.stateChanged, {
-        projects: store.getProjects(),
-        sessions: store.getSessions()
-      })
-      updateTrayMenu()
-    }
-  })
+    jobGuard ?? undefined
+  )
 
-  if (process.env.CTD_E2E === '1') {
+  if (testMode) {
     Object.defineProperty(globalThis, '__CTD_TEST__', {
       value: {
         activeCount: () => sessionService?.activeCount() ?? 0,
-        activePids: () => sessionService?.activeProcessIds() ?? []
+        activePids: () => sessionService?.activeProcessIds() ?? [],
+        requestQuit: () => requestQuit()
       },
       configurable: true
     })
@@ -241,7 +299,11 @@ async function initialize(): Promise<void> {
     sessions: sessionService,
     getDiagnostics: async () => {
       const settings = store?.getSettings() ?? structuredClone(DEFAULT_SETTINGS)
-      return collectEnvironmentDiagnostics(settings)
+      return collectEnvironmentDiagnostics(
+        settings,
+        jobGuard?.isActive() ?? false,
+        jobGuard?.error() ?? null
+      )
     },
     requestQuit
   })

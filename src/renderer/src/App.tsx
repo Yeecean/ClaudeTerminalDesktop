@@ -372,6 +372,21 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [settings, startSession, updateSettings])
 
+  if (fatalError) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--app-bg)] p-8">
+        <div className="max-w-md rounded-2xl border border-[var(--danger-border)] bg-[var(--panel-raised)] p-6">
+          <AlertCircle className="text-[var(--danger)]" size={23} />
+          <h1 className="mt-3 text-lg font-semibold">无法启动本地工作区</h1>
+          <p className="mt-2 text-[11.5px] leading-5 text-[var(--text-muted)]">{fatalError}</p>
+          <Button className="mt-5" variant="secondary" onClick={() => window.location.reload()}>
+            重新加载
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading || !settings || !diagnostics) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--app-bg)]">
@@ -389,24 +404,10 @@ export function App(): React.JSX.Element {
     )
   }
 
-  if (fatalError) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[var(--app-bg)] p-8">
-        <div className="max-w-md rounded-2xl border border-[var(--danger-border)] bg-[var(--panel-raised)] p-6">
-          <AlertCircle className="text-[var(--danger)]" size={23} />
-          <h1 className="mt-3 text-lg font-semibold">无法启动本地工作区</h1>
-          <p className="mt-2 text-[11.5px] leading-5 text-[var(--text-muted)]">{fatalError}</p>
-          <Button className="mt-5" variant="secondary" onClick={() => window.location.reload()}>
-            重新加载
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   const showEmpty =
     visibleIds.size === 0 ||
     (!selectedSession && settings.layoutMode !== 'parallel')
+  const displayedIds = showEmpty ? new Set<string>() : visibleIds
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
@@ -461,29 +462,40 @@ export function App(): React.JSX.Element {
             onOpenSettings={() => setSettingsOpen(true)}
           />
 
-          {showEmpty ? (
-            <EmptyState
-              project={selectedProject}
-              selectedSession={selectedSession}
-              diagnostics={diagnostics}
-              hasProjects={projects.length > 0}
-              onAddProject={() => void addProject()}
-              onNewSession={() => startSessionForActiveProject('new')}
-              onContinueSession={() => startSessionForActiveProject('continue')}
-              onResumeSession={() => startSessionForActiveProject('resume')}
-            />
-          ) : (
-            <TerminalWorkspace
-              sessions={mountedSessions}
-              visibleIds={visibleIds}
-              projects={projects}
-              settings={settings}
-              layoutMode={settings.layoutMode}
-              registerWriter={registerWriter}
-              onError={(message) => notify(message, 'error')}
-              onEndSession={requestEndSession}
-            />
-          )}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {mountedSessions.length > 0 ? (
+              <TerminalWorkspace
+                sessions={mountedSessions}
+                visibleIds={displayedIds}
+                projects={projects}
+                settings={settings}
+                layoutMode={settings.layoutMode}
+                registerWriter={registerWriter}
+                onError={(message) => notify(message, 'error')}
+                onEndSession={requestEndSession}
+              />
+            ) : null}
+            {showEmpty ? (
+              <div
+                className={
+                  mountedSessions.length > 0
+                    ? 'absolute inset-0 z-10 bg-[var(--app-bg)]'
+                    : 'flex min-h-0 flex-1'
+                }
+              >
+                <EmptyState
+                  project={selectedProject}
+                  selectedSession={selectedSession}
+                  diagnostics={diagnostics}
+                  hasProjects={projects.length > 0}
+                  onAddProject={() => void addProject()}
+                  onNewSession={() => startSessionForActiveProject('new')}
+                  onContinueSession={() => startSessionForActiveProject('continue')}
+                  onResumeSession={() => startSessionForActiveProject('resume')}
+                />
+              </div>
+            ) : null}
+          </div>
         </main>
       </div>
 

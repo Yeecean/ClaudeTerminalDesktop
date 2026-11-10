@@ -8,29 +8,35 @@ const projectPath = process.cwd()
 const artifactRoot = resolve(projectPath, 'test-results', 'e2e')
 const userDataPath = join(artifactRoot, 'user-data')
 const screenshots = join(artifactRoot, 'screenshots')
+const secondProjectPath = join(artifactRoot, 'second-project')
 const packagedExecutable = process.env.CTD_E2E_EXECUTABLE
   ? resolve(process.env.CTD_E2E_EXECUTABLE)
   : null
 
 rmSync(artifactRoot, { recursive: true, force: true })
 mkdirSync(screenshots, { recursive: true })
+mkdirSync(secondProjectPath, { recursive: true })
 
 const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
 const environment = {
   ...process.env,
   CTD_E2E: '1',
-  CTD_USER_DATA_DIR: userDataPath
+  CTD_USER_DATA_DIR: userDataPath,
+  ELECTRON_RENDERER_URL: packagedExecutable
+    ? 'https://example.invalid/should-not-load'
+    : ''
 }
 
 function launchApplication() {
   if (packagedExecutable) {
     return electron.launch({
       executablePath: packagedExecutable,
+      args: ['--ctd-e2e'],
       env: environment
     })
   }
   return electron.launch({
-    args: ['.'],
+    args: ['.', '--ctd-e2e'],
     cwd: projectPath,
     env: environment
   })
@@ -115,6 +121,31 @@ try {
   await page.waitForLoadState('domcontentloaded')
   await page.getByText('从一个项目开始').waitFor()
   assert.equal(await page.title(), 'Claude Terminal Desktop')
+  assert.equal(
+    await page.evaluate(async () => {
+      const bootstrap = await window.ctd.getBootstrap()
+      return bootstrap.diagnostics.jobGuardActive
+    }),
+    true
+  )
+  assert.equal(page.url().startsWith('file:'), true)
+  const contentSecurityPolicy = await page
+    .locator('meta[http-equiv="Content-Security-Policy"]')
+    .getAttribute('content')
+  assert.ok(contentSecurityPolicy)
+  assert.match(contentSecurityPolicy, /script-src 'self'/)
+  assert.doesNotMatch(contentSecurityPolicy, /script-src[^;]*unsafe-inline/)
+  assert.doesNotMatch(contentSecurityPolicy, /unsafe-eval/)
+  const windowCountBefore = electronApp.windows().length
+  const popupOpened = page
+    .waitForEvent('popup', { timeout: 500 })
+    .then(() => true)
+    .catch(() => false)
+  await page.evaluate(() => {
+    window.open('https://example.invalid/popup')
+  })
+  assert.equal(await popupOpened, false)
+  assert.equal(electronApp.windows().length, windowCountBefore)
 
   await electronApp.evaluate(async ({ dialog }, selectedPath) => {
     dialog.showOpenDialog = async () => ({
@@ -137,8 +168,38 @@ try {
 
   await page.keyboard.press('Control+Shift+N')
   await waitFor(async () => (await activeCount()) === 2, 'second PTY')
+  const pidsBeforeSwitch = await activePids()
   await page.locator('aside button[title^="Claude 1"]').click()
   assert.equal(await activeCount(), 2)
+  assert.deepEqual((await activePids()).sort(), pidsBeforeSwitch.sort())
+
+  await electronApp.evaluate(async ({ dialog }, selectedPath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [selectedPath]
+    })
+  }, secondProjectPath)
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  await page.getByText('准备开始新的终端会话').waitFor()
+  assert.equal(await page.locator('.terminal-host').count(), 2)
+  const firstTerminalHost = page.locator('.terminal-host').first()
+  await firstTerminalHost.evaluate((element) => {
+    element.dataset.ctdBufferedProbe = 'preserved'
+  })
+  await page
+    .locator('aside button')
+    .filter({ hasText: 'ccDesktop' })
+    .first()
+    .click()
+  await page.locator('.terminal-host:visible').first().waitFor()
+  assert.equal(await activeCount(), 2)
+  assert.equal(
+    await firstTerminalHost.evaluate(
+      (element) => element.dataset.ctdBufferedProbe
+    ),
+    'preserved'
+  )
+
   await page.getByTitle('并行模式').click()
   await page.waitForTimeout(400)
   assert.equal(await page.locator('.terminal-host:visible').count(), 2)
@@ -242,9 +303,9 @@ try {
     ...remainingRootPids,
     ...descendantPids(remainingRootPids, processSnapshot())
   ]
-  await electronApp.evaluate(({ app }) => {
-    setTimeout(() => app.quit(), 0)
-  })
+  await electronApp
+    .evaluate(() => globalThis.__CTD_TEST__.requestQuit())
+    .catch(() => {})
   await waitFor(() => closed, 'application quit', 10000)
   await waitFor(
     () => remainingTree.every((pid) => !processIsAlive(pid)),
@@ -277,15 +338,22 @@ try {
   await restartedPage.screenshot({
     path: join(screenshots, '06-restart-persistence.png')
   })
-  await electronApp.evaluate(({ app }) => {
-    setTimeout(() => app.quit(), 0)
-  })
+  await restartedPage
+    .evaluate(() => {
+      window.location.href = 'https://example.invalid/navigation'
+    })
+    .catch(() => {})
+  await restartedPage.waitForTimeout(300)
+  assert.equal(restartedPage.url().startsWith('file:'), true)
+  await electronApp
+    .evaluate(() => globalThis.__CTD_TEST__.requestQuit())
+    .catch(() => {})
   await waitFor(() => closed, 'persistence relaunch quit', 10000)
 
   assert.deepEqual(pageErrors, [])
   assert.equal(existsSync(join(artifactRoot, 'screenshots', '05-dark-workspace.png')), true)
   console.log(
-    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: project, two PTYs, Claude descendant discovery, parallel layout, session switch, search, live settings, tray hide/restore, process-tree cleanup, restart persistence.`
+    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: CSP and navigation guards, IPC page boundary, process guard, project/session buffering, two PTYs with unchanged PIDs, Claude descendant discovery, parallel layout, search, live settings, tray lifecycle, process-tree cleanup, restart persistence.`
   )
 } catch (error) {
   if (electronApp && !closed) {

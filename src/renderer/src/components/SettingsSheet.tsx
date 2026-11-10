@@ -859,6 +859,31 @@ export function SettingsSheet({
                     </div>
                   ))}
                 </div>
+                <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--panel)] px-2.5 py-2">
+                  <div>
+                    <p className="text-[10px] font-medium text-[var(--text-secondary)]">
+                      进程级联保护
+                    </p>
+                    <p className="mt-0.5 text-[9px] text-[var(--text-faint)]">
+                      Windows Job Object，异常退出时终止终端进程树
+                    </p>
+                    {!diagnostics.jobGuardActive && diagnostics.jobGuardError ? (
+                      <p className="mt-1 max-w-[360px] break-all text-[8.5px] leading-3 text-[var(--warning-strong)]">
+                        {diagnostics.jobGuardError}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span
+                    className={cn(
+                      'text-[9px] font-medium',
+                      diagnostics.jobGuardActive
+                        ? 'text-[var(--success-strong)]'
+                        : 'text-[var(--warning-strong)]'
+                    )}
+                  >
+                    {diagnostics.jobGuardActive ? '已启用' : '不可用'}
+                  </span>
+                </div>
               </Section>
               <Section title="配置与隐私">
                 <div

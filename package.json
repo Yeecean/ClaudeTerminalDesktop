@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && node scripts/e2e-smoke.mjs",
+    "test:e2e:crash": "npm run build && node scripts/crash-smoke.mjs",
     "package": "npm run build && electron-builder --win --x64",
     "package:dir": "npm run build && electron-builder --dir --win --x64",
     "rebuild": "electron-rebuild -f -w node-pty"
@@ -68,6 +69,10 @@
       {
         "from": "resources/icon.png",
         "to": "resources/icon.png"
+      },
+      {
+        "from": "resources/job-watchdog.ps1",
+        "to": "resources/job-watchdog.ps1"
       }
     ],
     "asar": true,

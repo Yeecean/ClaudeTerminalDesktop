@@ -140,7 +140,9 @@ async function detectClaude(): Promise<CliDiagnostic> {
 }
 
 export async function collectEnvironmentDiagnostics(
-  settings: AppSettings
+  settings: AppSettings,
+  jobGuardActive = false,
+  jobGuardError: string | null = null
 ): Promise<EnvironmentDiagnostic> {
   const cli = await detectClaude()
   return {
@@ -154,6 +156,8 @@ export async function collectEnvironmentDiagnostics(
     appVersion: app.getVersion(),
     shells: detectShells(settings),
     cli,
+    jobGuardActive,
+    jobGuardError,
     configDirInherited: Boolean(process.env.CLAUDE_CONFIG_DIR)
   }
 }
