@@ -122,6 +122,10 @@ export class PtyManager {
     return this.processes.size
   }
 
+  activePids(): number[] {
+    return [...this.processes.values()].map((entry) => entry.terminal.pid)
+  }
+
   kill(sessionId: string): void {
     const processEntry = this.processes.get(sessionId)
     if (!processEntry || processEntry.closing) return

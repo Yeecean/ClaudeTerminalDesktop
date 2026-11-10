@@ -60,6 +60,9 @@ export class SessionService {
 
     const settings = this.store.getSettings()
     const shell = resolveShell(settings)
+    const concurrentSessions = this.store
+      .getActiveSessions()
+      .filter((activeSession) => activeSession.projectId === project.id).length
     const number = this.store.countSessionsForProject(project.id) + 1
     const title =
       input.mode === 'new'
@@ -98,7 +101,14 @@ export class SessionService {
       lastActivityAt: new Date().toISOString()
     })
     this.callbacks.onStateChanged()
-    return { session: running ?? session }
+    return {
+      session: running ?? session,
+      ...(concurrentSessions > 0
+        ? {
+            warning: `该项目已有 ${concurrentSessions} 个活动会话。多个 Claude 同时修改同一目录时，请注意文件冲突。`
+          }
+        : {})
+    }
   }
 
   write(sessionId: string, data: string): void {
@@ -155,6 +165,10 @@ export class SessionService {
     return this.store
       .getActiveSessions()
       .filter((session) => this.pty.has(session.id)).length
+  }
+
+  activeProcessIds(): number[] {
+    return this.pty.activePids()
   }
 
   private async waitForExit(sessionIds: string[], timeoutMs: number): Promise<void> {

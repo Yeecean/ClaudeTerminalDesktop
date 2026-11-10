@@ -265,6 +265,7 @@ export function App(): React.JSX.Element {
             : [...current, result.session]
         })
         setSelectedSessionId(result.session.id)
+        if (result.warning) notify(result.warning, 'warning')
       } catch (error) {
         notify(errorMessage(error), 'error')
       } finally {

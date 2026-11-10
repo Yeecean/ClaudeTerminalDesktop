@@ -225,6 +225,16 @@ async function initialize(): Promise<void> {
     }
   })
 
+  if (process.env.CTD_E2E === '1') {
+    Object.defineProperty(globalThis, '__CTD_TEST__', {
+      value: {
+        activeCount: () => sessionService?.activeCount() ?? 0,
+        activePids: () => sessionService?.activeProcessIds() ?? []
+      },
+      configurable: true
+    })
+  }
+
   registerIpc({
     getWindow: () => mainWindow,
     store,

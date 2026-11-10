@@ -117,6 +117,7 @@ export interface CreateSessionInput {
 
 export interface CreateSessionResult {
   session: SessionRecord
+  warning?: string
 }
 
 export interface PtyDataEvent {

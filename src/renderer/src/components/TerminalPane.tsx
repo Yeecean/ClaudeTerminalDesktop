@@ -81,6 +81,7 @@ export function TerminalPane({
   const latestSettingsRef = useRef(settings)
   const webglRef = useRef<WebglAddon | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const searchOpenRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -150,6 +151,17 @@ export function TerminalPane({
         .catch(() => onError('无法读取系统剪贴板。'))
     }
 
+    const openSearch = (): void => {
+      searchOpenRef.current = true
+      setSearchOpen(true)
+    }
+
+    const closeSearch = (): void => {
+      searchOpenRef.current = false
+      setSearchOpen(false)
+      terminal.focus()
+    }
+
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
 
@@ -172,13 +184,11 @@ export function TerminalPane({
         return false
       }
       if (event.ctrlKey && !event.altKey && event.code === 'KeyF') {
-        setSearchOpen(true)
-        window.setTimeout(() => searchInputRef.current?.focus(), 20)
+        openSearch()
         return false
       }
-      if (event.key === 'Escape' && searchOpen) {
-        setSearchOpen(false)
-        terminal.focus()
+      if (event.key === 'Escape' && searchOpenRef.current) {
+        closeSearch()
         return false
       }
       return true
@@ -221,6 +231,10 @@ export function TerminalPane({
     terminal.options.theme = terminalTheme(settings)
     window.requestAnimationFrame(fitAndResize)
   }, [settings])
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen])
 
   useEffect(() => {
     if (!visible) return
@@ -291,6 +305,7 @@ export function TerminalPane({
               }
               if (event.key === 'Escape') {
                 event.preventDefault()
+                searchOpenRef.current = false
                 setSearchOpen(false)
                 terminalRef.current?.focus()
               }
@@ -318,6 +333,7 @@ export function TerminalPane({
             aria-label="关闭搜索"
             className="flex size-7 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/85"
             onClick={() => {
+              searchOpenRef.current = false
               setSearchOpen(false)
               terminalRef.current?.focus()
             }}
