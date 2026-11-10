@@ -1,0 +1,10 @@
+node_modules/
+out/
+release/
+dist/
+test-results/
+playwright-report/
+*.log
+*.tmp
+.DS_Store
+

@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --app-bg: #f4f0e8;
+  --panel: #fbf8f2;
+  --panel-raised: #ffffff;
+  --border: #ded6c9;
+  --text-primary: #302a23;
+  --text-secondary: #62594f;
+  --text-muted: #8d8378;
+  --accent: #c76545;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --app-bg: #1d1b18;
+    --panel: #26231f;
+    --panel-raised: #302c27;
+    --border: #453f37;
+    --text-primary: #f2ece0;
+    --text-secondary: #c0b6a8;
+    --text-muted: #8d8378;
+    --accent: #df8b6c;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--app-bg);
+  color: var(--text-primary);
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button,
+.titlebar input,
+.titlebar a {
+  -webkit-app-region: no-drag;
+}
+
