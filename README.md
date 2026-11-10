@@ -11,7 +11,8 @@
 - 专注、导航、并行三种预设布局。
 - 系统托盘运行；关闭窗口可继续保留 CLI，完全退出前确认活动会话。
 - GUI 与终端字体、字号、字重、行高、密度、光标、滚动和主题独立设置。
-- 终端基础色与 16 色 ANSI 调色板、Unicode 11、WebGL 自动回退。
+- 终端基础色与 16 色 ANSI 调色板、Unicode 11、WebGL 自动回退；PTY 强制
+  `xterm-256color`/`truecolor` 并清除宿主继承的禁色环境变量。
 - 复制、粘贴、搜索、resize、高吞吐输出批量写入。
 - PowerShell / PowerShell 7 / 自定义 PowerShell 路径与 Profile 开关。
 - PowerShell、Claude CLI、应用版本和配置继承状态诊断。

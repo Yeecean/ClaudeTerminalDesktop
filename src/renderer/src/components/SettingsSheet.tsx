@@ -215,6 +215,7 @@ function RangeField({
       </div>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}
@@ -435,7 +436,7 @@ export function SettingsSheet({
                   />
                 </StackField>
                 <RangeField
-                  label="字号"
+                  label="界面字号"
                   value={settings.gui.fontSize}
                   min={13}
                   max={20}
@@ -533,7 +534,7 @@ export function SettingsSheet({
                   </div>
                 </StackField>
                 <RangeField
-                  label="字号"
+                  label="终端字号"
                   value={settings.terminal.fontSize}
                   min={9}
                   max={32}

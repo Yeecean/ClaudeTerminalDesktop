@@ -153,7 +153,10 @@ export function App(): React.JSX.Element {
       setSelectedSessionId(null)
       return
     }
-    if (!selectedProjectId || !projects.some((project) => project.id === selectedProjectId)) {
+    const selectedProjectExists = projects.some(
+      (project) => project.id === selectedProjectId
+    )
+    if (!selectedProjectExists) {
       setSelectedProjectId(projects[0]?.id ?? null)
     }
     if (

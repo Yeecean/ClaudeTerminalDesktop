@@ -129,6 +129,14 @@ export function TerminalPane({
     })
 
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+      const hostElement = hostRef.current
+      if (hostElement) {
+        const terminalElement = hostElement.querySelector('.xterm')
+        if (terminalElement instanceof HTMLElement) {
+          terminalElement.dataset.ctdCols = String(cols)
+          terminalElement.dataset.ctdRows = String(rows)
+        }
+      }
       if (!visibleRef.current) return
       void window.ctd.resizeSession(sessionId, cols, rows).catch(() => {})
     })
@@ -241,6 +249,7 @@ export function TerminalPane({
     window.requestAnimationFrame(() => {
       fitAndResize()
       terminalRef.current?.focus()
+      terminalRef.current?.clearTextureAtlas()
     })
   }, [visible])
 
@@ -275,10 +284,11 @@ export function TerminalPane({
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--terminal-surface)]">
       <div
-        ref={hostRef}
-        className="terminal-host min-h-0 flex-1"
+        className="terminal-frame min-h-0 flex-1"
         style={{ padding: settings.terminal.padding }}
-      />
+      >
+        <div ref={hostRef} className="terminal-host bg-[var(--terminal-surface)]" />
+      </div>
 
       {searchOpen ? (
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#25211d]/95 p-1 shadow-xl backdrop-blur">

@@ -30,14 +30,19 @@ export interface PtyManagerCallbacks {
   onExit: (sessionId: string, exitCode: number, signal?: number) => void
 }
 
-function sanitizedEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
+export function sanitizedEnvironment(
+  environment: NodeJS.ProcessEnv
+): Record<string, string> {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(environment)) {
     if (typeof value === 'string') result[key] = value
   }
-  result.TERM = result.TERM || 'xterm-256color'
-  result.COLORTERM = result.COLORTERM || 'truecolor'
+  result.TERM = 'xterm-256color'
+  result.COLORTERM = 'truecolor'
   result.TERM_PROGRAM = 'ClaudeTerminalDesktop'
+  delete result.NO_COLOR
+  delete result.CLICOLOR
+  delete result.CLICOLOR_FORCE
   return result
 }
 

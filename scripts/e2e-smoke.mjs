@@ -164,6 +164,65 @@ try {
   await waitFor(async () => (await activeCount()) === 1, 'first PTY')
   await page.locator('.xterm').waitFor()
   await page.locator('.xterm canvas').first().waitFor()
+  await page.waitForFunction(() => {
+    const terminalElement = document.querySelector('.xterm')
+    return (
+      terminalElement instanceof HTMLElement &&
+      Number(terminalElement.dataset.ctdCols) > 40 &&
+      Number(terminalElement.dataset.ctdRows) > 20
+    )
+  })
+  const terminalRendering = await page
+    .locator('.terminal-host')
+    .first()
+    .evaluate((host) => {
+      const terminalElement = host.querySelector('.xterm')
+      const canvas = host.querySelector('canvas')
+      if (!(terminalElement instanceof HTMLElement)) return null
+      if (!(canvas instanceof HTMLCanvasElement)) return null
+      const hostRect = host.getBoundingClientRect()
+      const canvasRect = canvas.getBoundingClientRect()
+      const canvasWidth = canvasRect.width
+      const canvasHeight = canvasRect.height
+      return {
+        canvasLeft: canvasRect.left - hostRect.left,
+        canvasTop: canvasRect.top - hostRect.top,
+        canvasRight: hostRect.right - canvasRect.right,
+        canvasBottom: hostRect.bottom - canvasRect.bottom,
+        canvasWidth,
+        canvasHeight
+      }
+    })
+  assert.ok(terminalRendering, 'terminal renderer elements')
+  assert.equal(
+    Math.round(terminalRendering.canvasLeft),
+    0,
+    'terminal canvas left inset'
+  )
+  assert.equal(
+    Math.round(terminalRendering.canvasTop),
+    0,
+    'terminal canvas top inset'
+  )
+  assert.ok(terminalRendering.canvasRight <= 18, 'terminal canvas right inset')
+  assert.ok(
+    terminalRendering.canvasBottom <= 9,
+    `terminal canvas bottom inset: ${JSON.stringify(terminalRendering)}`
+  )
+  assert.ok(terminalRendering.canvasWidth > 600, 'terminal canvas width')
+  assert.ok(terminalRendering.canvasHeight > 500, 'terminal canvas height')
+  const initialGeometry = await page
+    .locator('.terminal-host')
+    .first()
+    .evaluate(async (host) => {
+      const terminalElement = host.querySelector('.xterm')
+      if (!(terminalElement instanceof HTMLElement)) return null
+      const cols = Number(terminalElement.dataset.ctdCols)
+      const rows = Number(terminalElement.dataset.ctdRows)
+      return { cols, rows }
+    })
+  assert.ok(initialGeometry?.cols > 40, 'initial terminal columns')
+  assert.ok(initialGeometry?.rows > 20, 'initial terminal rows')
   await page.screenshot({ path: join(screenshots, '02-claude-cli.png') })
 
   await page.keyboard.press('Control+Shift+N')
@@ -205,7 +264,7 @@ try {
   assert.equal(await page.locator('.terminal-host:visible').count(), 2)
   await page.screenshot({ path: join(screenshots, '02b-parallel-mode.png') })
   await page.getByTitle('导航模式').click()
-  await page.locator('.xterm').first().click()
+  await page.locator('.xterm:visible').first().click()
   await page.keyboard.press('Control+f')
   const searchInput = page.getByPlaceholder('在终端中查找')
   await searchInput.waitFor()
@@ -217,10 +276,17 @@ try {
   await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
 
   const brand = page.getByText('Claude Terminal', { exact: true })
+  const terminalGeometry = async () => {
+    const terminalElement = page.locator('.terminal-host:visible .xterm').first()
+    return terminalElement.evaluate((element) => ({
+      cols: Number(element.dataset.ctdCols),
+      rows: Number(element.dataset.ctdRows)
+    }))
+  }
   const sizeBefore = Number.parseFloat(
     await brand.evaluate((element) => getComputedStyle(element).fontSize)
   )
-  const guiSizeSlider = page.locator('input[type=range]').first()
+  const guiSizeSlider = page.getByLabel('界面字号', { exact: true })
   await guiSizeSlider.focus()
   await guiSizeSlider.press('End')
   await waitFor(
@@ -232,9 +298,35 @@ try {
   )
   await sleep(500)
 
+  const initialTerminalGeometry = await terminalGeometry()
+  await page.getByRole('button', { name: '终端' }).click()
+  const terminalSizeSlider = page.getByLabel('终端字号', { exact: true })
+  await terminalSizeSlider.focus()
+  await terminalSizeSlider.press('End')
+  await waitFor(
+    async () => {
+      const next = await terminalGeometry()
+      return (
+        next.cols < initialTerminalGeometry.cols &&
+        next.rows < initialTerminalGeometry.rows
+      )
+    },
+    'terminal font scaling geometry'
+  )
+  await waitFor(
+    async () => {
+      const persistedSettings = JSON.parse(
+        readFileSync(join(userDataPath, 'settings.json'), 'utf8')
+      )
+      return persistedSettings.terminal.fontSize === 32
+    },
+    'terminal font persistence'
+  )
+
   const persisted = JSON.parse(readFileSync(join(userDataPath, 'settings.json'), 'utf8'))
   assert.equal(persisted.themeMode, 'dark')
   assert.equal(persisted.gui.fontSize, 20)
+  assert.equal(persisted.terminal.fontSize, 32)
   await page.screenshot({ path: join(screenshots, '03-settings-dark.png') })
 
   await page.getByRole('button', { name: '诊断' }).click()
