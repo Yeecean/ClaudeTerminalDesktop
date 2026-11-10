@@ -16,6 +16,8 @@
 - PowerShell / PowerShell 7 / 自定义 PowerShell 路径与 Profile 开关。
 - PowerShell、Claude CLI、应用版本和配置继承状态诊断。
 - 本地 JSON 原子保存、损坏文件隔离恢复、单实例和进程树清理。
+- Windows Job Object 崩溃保护：主进程被强制终止时，级联结束全部 PTY 与
+  Claude CLI 后代；Job Guard 不可用时会在会话提示和诊断页明确告警。
 
 ## 环境要求
 
@@ -51,28 +53,37 @@ npm run dev
 | `npm run check:pty` | 用当前 Electron 验证 node-pty / ConPTY |
 | `npm run check` | 类型检查、单元测试、ConPTY 检查 |
 | `npm run test:e2e` | 构建并运行 Electron 端到端冒烟测试 |
+| `npm run test:e2e:crash` | 构建并验证强制终止主进程后无 PTY/CLI 孤儿 |
 | `npm run package` | 生成 NSIS 安装包和便携版 |
 | `npm run package:dir` | 生成未压缩的 `release/win-unpacked/` |
 
 端到端测试需要可交互的 Windows 桌面和已安装的 Claude Code CLI。测试使用
-`test-results/e2e/user-data` 作为隔离数据目录，不会写入正常用户数据。
+`test-results/e2e*` 与 `test-results/crash/user-data` 作为隔离数据目录，不会
+写入正常用户数据。`test:e2e` 覆盖安全边界、真实 CLI、项目与终端缓冲、双 PTY
+切换、进程树清理、托盘和重启持久化；`test:e2e:crash` 会强制结束应用主进程，
+验证 Job Object 级联清理，并确认重启后旧会话被标记为已结束。
 
-打包后可针对真实可执行文件复用同一套 E2E：
+打包后可针对真实可执行文件复用两类 E2E：
 
 ```powershell
 $env:CTD_E2E_EXECUTABLE = "release\win-unpacked\Claude Terminal Desktop.exe"
 node scripts/e2e-smoke.mjs
+node scripts/crash-smoke.mjs
 ```
 
 ## 产物
 
 `npm run package` 生成：
 
-- `release/Claude Terminal Desktop-0.1.0-x64-setup.exe`
-- `release/Claude Terminal Desktop-0.1.0-x64-portable.exe`
-- `release/win-unpacked/Claude Terminal Desktop.exe`
+| 产物 | 大小 | SHA-256 |
+| --- | ---: | --- |
+| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,802 bytes | `BBB50FD76391DB141BA99F6ECFC7C2EFEFDFFFCD6E93D4B11ADFB3D97CFEFA56` |
+| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,445,752 bytes | `750419DE43FD8708C97B174FD54E2EE4100FB9128522BA6F2C2D0171EED9A69E` |
+| `release/win-unpacked/Claude Terminal Desktop.exe` | 解包目录 | 随 `app.asar` 构建生成 |
 
-当前产物未做代码签名，Windows SmartScreen 可能显示未知发布者提示。
+旧的过期产物已清理。当前产物未做代码签名，Windows SmartScreen 可能显示未知
+发布者提示；本版本只对 `win-unpacked` 产物执行了完整功能与崩溃 E2E，未在实机
+安装 NSIS 包或直接启动 portable 包。
 
 ## 本地数据
 
@@ -82,11 +93,15 @@ node scripts/e2e-smoke.mjs
 %APPDATA%\ClaudeTerminalDesktop\
 ├── settings.json
 ├── projects.json
-└── sessions.json
+├── sessions.json
+├── runtime/       # PTY 启动门控的临时运行文件
+└── job-guard/     # Job Object 进程保护的协调文件
 ```
 
 同目录还包含 Chromium/Electron 的缓存数据。三个 JSON 文件使用临时文件加
 rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` 后恢复默认值。
+`runtime/` 与 `job-guard/` 只保存启动/进程协调状态，不属于用户偏好，也不包含
+终端输出或 Claude 对话内容；强制崩溃后可能残留，可在应用退出后安全删除。
 
 应用只保存设置、项目路径和应用内会话元数据，不保存终端日志、完整对话、
 凭据或环境变量值。若不需要这些工作区数据，可在应用完全退出后删除整个
@@ -95,9 +110,14 @@ rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` �
 ## 安全边界
 
 - Renderer 启用 `sandbox` 与 `contextIsolation`，关闭 `nodeIntegration`。
-- Preload 只暴露白名单 IPC API；主进程校验发送窗口、主 frame 和参数。
-- 拒绝权限请求、外部导航、新窗口和任意页面加载。
-- 生产内容使用动态严格 CSP，开发 CSP 仅额外允许 Vite 所需来源。
+- Preload 只暴露白名单 IPC API；主进程校验发送窗口、主 frame、文档 URL 和参数。
+- 页面来源只接受精确的本地 `index.html` 文件 URL；开发模式额外接受 loopback
+  Vite origin。生产包忽略 `ELECTRON_RENDERER_URL`，不会加载远程页面。
+- 拒绝权限请求、外部导航和新窗口；生产内容使用严格 CSP，开发 CSP 仅额外允许
+  Vite 所需来源。
+- Windows Job Object 使用 `KILL_ON_JOB_CLOSE` 级联保护 PTY；PTY 先登记到 Job
+  Object，再通过启动门控执行 Claude。正常退出先结束会话并停止守护进程；清理
+  失败时应用保持运行并报告错误，不把仍存活的会话伪标为已结束。
 - PTY 继承用户现有环境，但不设置、覆盖或迁移 `CLAUDE_CONFIG_DIR`。
 - 应用不修改 Claude 用户配置、项目 `.claude` 配置或凭据。
 - 自定义 Shell 路径只用于创建 PTY，不拼接来自 renderer 的命令片段。
@@ -111,6 +131,8 @@ rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` �
 - 多会话可同时打开同一项目，但应用不做文件锁；仅提示潜在文件冲突。
 - 未自动验证中文 IME、CJK/Emoji 组合输入、高 DPI 和超大输出压力场景。
 - 安装包与便携版已生成，但当前只对 `win-unpacked` 产物执行了完整 E2E。
+- 新建会话、搜索、设置和布局切换快捷键当前固定，未提供可视化自定义入口。
+- 诊断页展示 `claude doctor` 的用途和手动命令，但未提供应用内一键执行按钮。
 - 安装包未签名；当前无自动更新、云同步、远程控制、内置编辑器或 Git 图形界面。
 - `npm audit` 的生产依赖为 0 漏洞；开发依赖 `electron-builder` 的打包工具链
   仍有 6 个 moderate 级传递依赖告警，不进入运行时产物。
