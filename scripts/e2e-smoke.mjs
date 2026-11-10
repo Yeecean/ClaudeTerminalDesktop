@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { _electron as electron } from 'playwright'
@@ -42,6 +43,44 @@ function processIsAlive(pid) {
   } catch {
     return false
   }
+}
+
+function processSnapshot() {
+  const output = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '$items = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine); ConvertTo-Json -InputObject $items -Compress'
+    ],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10000
+    }
+  )
+  const parsed = JSON.parse(output)
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function descendantPids(rootPids, processes) {
+  const found = new Set(rootPids)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const processEntry of processes) {
+      if (
+        !found.has(processEntry.ProcessId) &&
+        found.has(processEntry.ParentProcessId)
+      ) {
+        found.add(processEntry.ProcessId)
+        changed = true
+      }
+    }
+  }
+  for (const rootPid of rootPids) found.delete(rootPid)
+  return [...found]
 }
 
 async function waitFor(check, label, timeout = 8000) {
@@ -145,13 +184,28 @@ try {
   await page.screenshot({ path: join(screenshots, '05-dark-workspace.png') })
 
   const pidsBeforeEnd = await activePids()
+  const processesBeforeEnd = processSnapshot()
+  const descendantsBeforeEnd = descendantPids(pidsBeforeEnd, processesBeforeEnd)
+  assert.ok(descendantsBeforeEnd.length > 0, 'expected live PTY descendants')
+  assert.ok(
+    processesBeforeEnd.some(
+      (processEntry) =>
+        descendantsBeforeEnd.includes(processEntry.ProcessId) &&
+        /claude/i.test(processEntry.CommandLine ?? '')
+    ),
+    'expected a live Claude CLI descendant'
+  )
   await page.getByRole('button', { name: '结束当前会话' }).click()
   await page.getByRole('button', { name: '结束会话' }).click()
   await waitFor(async () => (await activeCount()) === 1, 'ending a session')
   const pidsAfterEnd = await activePids()
   const endedPid = pidsBeforeEnd.find((pid) => !pidsAfterEnd.includes(pid))
   assert.ok(endedPid)
-  await waitFor(() => !processIsAlive(endedPid), 'PTY root cleanup')
+  const endedTree = [endedPid, ...descendantPids([endedPid], processesBeforeEnd)]
+  await waitFor(
+    () => endedTree.every((pid) => !processIsAlive(pid)),
+    'PTY process tree cleanup'
+  )
 
   assert.equal(
     await electronApp.evaluate(
@@ -183,14 +237,18 @@ try {
     'restore from tray'
   )
 
-  const remainingPids = await activePids()
+  const remainingRootPids = await activePids()
+  const remainingTree = [
+    ...remainingRootPids,
+    ...descendantPids(remainingRootPids, processSnapshot())
+  ]
   await electronApp.evaluate(({ app }) => {
     setTimeout(() => app.quit(), 0)
   })
   await waitFor(() => closed, 'application quit', 10000)
   await waitFor(
-    () => remainingPids.every((pid) => !processIsAlive(pid)),
-    'remaining PTY cleanup'
+    () => remainingTree.every((pid) => !processIsAlive(pid)),
+    'remaining PTY process tree cleanup'
   )
 
   closed = false
@@ -227,7 +285,7 @@ try {
   assert.deepEqual(pageErrors, [])
   assert.equal(existsSync(join(artifactRoot, 'screenshots', '05-dark-workspace.png')), true)
   console.log(
-    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: project, two PTYs, parallel layout, session switch, search, live settings, tray hide/restore, cleanup, restart persistence.`
+    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: project, two PTYs, Claude descendant discovery, parallel layout, session switch, search, live settings, tray hide/restore, process-tree cleanup, restart persistence.`
   )
 } catch (error) {
   if (electronApp && !closed) {
