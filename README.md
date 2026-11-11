@@ -7,7 +7,10 @@
 ## 已实现能力
 
 - 在项目目录中启动、继续或恢复现有 Claude Code CLI 会话。
+- 首次启动或工作区为空时自动创建并登记“默认工作区”，无需先选择项目。
 - 同一项目内多个独立 PTY；切换会话不会销毁或重启后台终端。
+- 每个项目在当前运行周期内记住上次选中的可见对话；侧栏聚焦后可用方向键
+  切换项目与会话。
 - 专注、导航、并行三种预设布局。
 - 系统托盘运行；关闭窗口可继续保留 CLI，完全退出前确认活动会话。
 - GUI 与终端字体、字号、字重、行高、密度、光标、滚动和主题独立设置。
@@ -37,10 +40,12 @@ npm run dev
 
 首次进入后：
 
-1. 点击“添加项目目录”选择工作目录。
-2. 使用“新会话”“继续最近”“恢复历史”启动原生 CLI。
-3. 关闭窗口默认隐藏到托盘；从托盘菜单或设置页可完全退出。
-4. 使用 `Ctrl+Shift+N` 新建会话，`Ctrl+F` 搜索终端，`Ctrl+,` 打开设置，
+1. 应用会自动准备“默认工作区”。也可以点击“添加项目”选择已有项目目录。
+2. 使用“启动新会话”“继续最近”“恢复历史”启动原生 CLI。
+3. 侧栏聚焦时，`←/→` 切换项目，`↑/↓` 切换当前项目的会话；`F6` 将焦点移到
+   侧栏。终端聚焦时使用 `Ctrl+Shift+←/→` 和 `Ctrl+Shift+↑/↓` 全局切换。
+4. 关闭窗口默认隐藏到托盘；从托盘菜单或设置页可完全退出。
+5. 使用 `Ctrl+Shift+N` 新建会话，`Ctrl+F` 搜索终端，`Ctrl+,` 打开设置，
    `Ctrl+B` 切换专注/导航布局。
 
 ## 命令
@@ -79,8 +84,8 @@ node scripts/crash-smoke.mjs
 
 | 产物 | 大小 | SHA-256 |
 | --- | ---: | --- |
-| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,238,979 bytes | `C32DDFDAD1026B87EA622E6E7906734510974982175F525338E0300AAB41DD3D` |
-| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,449,120 bytes | `D33A150B4EF014276FBB4193D161031FB79E689D147862D4D2BCF0C4D3D1972F` |
+| `release/Claude Terminal Desktop-0.1.0-x64-setup.exe` | 129,240,300 bytes | `112EBA38A58AE9B12A661BD524CC96E0BB207DA18AFB75A8947A3015907268A2` |
+| `release/Claude Terminal Desktop-0.1.0-x64-portable.exe` | 114,447,865 bytes | `6A63EEA2AE18682583A519BAA52DEB74A5EC03704954BE6DF407E332B5B3D0FD` |
 | `release/win-unpacked/Claude Terminal Desktop.exe` | 解包目录 | 随 `app.asar` 构建生成 |
 
 旧的过期产物已清理。当前产物未做代码签名，Windows SmartScreen 可能显示未知
@@ -104,6 +109,16 @@ node scripts/crash-smoke.mjs
 rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` 后恢复默认值。
 `runtime/` 与 `job-guard/` 只保存启动/进程协调状态，不属于用户偏好，也不包含
 终端输出或 Claude 对话内容；强制崩溃后可能残留，可在应用退出后安全删除。
+
+默认工作区位置：
+
+- 源码开发模式：`<项目仓库>\default-workspace`
+- 打包运行：系统“文档”目录下的
+  `Claude Terminal Desktop\Default Workspace`
+- 自动化测试：`test-results/e2e*/user-data/default-workspace` 与
+  `test-results/crash/user-data/default-workspace`
+
+应用只把这个目录作为 Claude CLI 的启动 cwd；不会自动扫描或索引其中的文件。
 
 应用只保存设置、项目路径和应用内会话元数据，不保存终端日志、完整对话、
 凭据或环境变量值。若不需要这些工作区数据，可在应用完全退出后删除整个
@@ -133,7 +148,11 @@ rename 的原子写入方式；损坏文件会改名为 `.corrupt-<timestamp>` �
 - 多会话可同时打开同一项目，但应用不做文件锁；仅提示潜在文件冲突。
 - 未自动验证中文 IME、CJK/Emoji 组合输入、高 DPI 和超大输出压力场景。
 - 安装包与便携版已生成，但当前只对 `win-unpacked` 产物执行了完整 E2E。
-- 新建会话、搜索、设置和布局切换快捷键当前固定，未提供可视化自定义入口。
+- 每个项目的“上次对话”记忆只保存在当前进程内，重启应用后不恢复；历史对话
+  仍通过 CLI 原生的“继续最近 / 恢复历史”入口打开。
+- 若默认工作区创建失败（例如“文档”目录不可写），应用会保留空工作区并只向
+  主进程日志记录错误，此时需要手动“添加项目”。
+- 新建、搜索、设置、布局和项目/会话切换快捷键当前固定，未提供可视化自定义入口。
 - 诊断页展示 `claude doctor` 的用途和手动命令，但未提供应用内一键执行按钮。
 - 默认加载 PowerShell Profile；若受信 Profile 在 PTY 加入 Job Object 前自行
   启动了持久或分离进程，这些进程不在已验证的崩溃清理路径内。
