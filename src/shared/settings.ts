@@ -16,6 +16,11 @@ const SHELL_KINDS: AppSettings['shell']['kind'][] = [
   'powershell-7',
   'custom'
 ]
+const SETTINGS_VERSION = 2
+const LEGACY_TERMINAL_FONT_FAMILIES = new Set([
+  'Cascadia Code',
+  'Cascadia Code, Consolas, monospace'
+])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -57,6 +62,21 @@ export function normalizeSettings(input: unknown): AppSettings {
   const shell = isRecord(root.shell) ? root.shell : {}
   const windowSettings = isRecord(root.window) ? root.window : {}
   const defaults = DEFAULT_SETTINGS
+  const sourceVersion =
+    typeof root.version === 'number' && Number.isFinite(root.version)
+      ? Math.floor(root.version)
+      : 0
+  const legacyTerminalFont =
+    sourceVersion < SETTINGS_VERSION &&
+    terminal.fontSize === 14 &&
+    terminal.fontWeight === 400 &&
+    terminal.fontWeightBold === 600 &&
+    terminal.lineHeight === 1.25 &&
+    terminal.padding === 14 &&
+    (terminal.fontFamily === undefined ||
+      (typeof terminal.fontFamily === 'string' &&
+        LEGACY_TERMINAL_FONT_FAMILIES.has(terminal.fontFamily)))
+  const terminalFontSource = legacyTerminalFont ? defaults.terminal : terminal
 
   const ansiInput = Array.isArray(terminal.ansi) ? terminal.ansi : []
   const ansi = DEFAULT_ANSI_PALETTE.map((fallback, index) =>
@@ -64,7 +84,7 @@ export function normalizeSettings(input: unknown): AppSettings {
   )
 
   return {
-    version: 1,
+    version: SETTINGS_VERSION,
     themeMode: oneOf(root.themeMode, THEME_MODES, defaults.themeMode),
     layoutMode: oneOf(root.layoutMode, LAYOUT_MODES, defaults.layoutMode),
     gui: {
@@ -79,22 +99,27 @@ export function normalizeSettings(input: unknown): AppSettings {
       density: oneOf(gui.density, DENSITIES, defaults.gui.density)
     },
     terminal: {
-      fontFamily: text(terminal.fontFamily, defaults.terminal.fontFamily, 200),
+      fontFamily: text(terminalFontSource.fontFamily, defaults.terminal.fontFamily, 200),
       fontSize: integerInRange(
-        terminal.fontSize,
+        terminalFontSource.fontSize,
         defaults.terminal.fontSize,
         SETTINGS_LIMITS.terminalFontMin,
         SETTINGS_LIMITS.terminalFontMax
       ),
-      fontWeight: integerInRange(terminal.fontWeight, defaults.terminal.fontWeight, 300, 800),
+      fontWeight: integerInRange(
+        terminalFontSource.fontWeight,
+        defaults.terminal.fontWeight,
+        300,
+        800
+      ),
       fontWeightBold: integerInRange(
-        terminal.fontWeightBold,
+        terminalFontSource.fontWeightBold,
         defaults.terminal.fontWeightBold,
         300,
         900
       ),
       lineHeight: numberInRange(
-        terminal.lineHeight,
+        terminalFontSource.lineHeight,
         defaults.terminal.lineHeight,
         SETTINGS_LIMITS.lineHeightMin,
         SETTINGS_LIMITS.lineHeightMax

@@ -131,12 +131,22 @@ try {
     true
   )
   assert.equal(await page.title(), 'Claude Terminal Desktop')
+  const bootstrap = await page.evaluate(async () => {
+    const payload = await window.ctd.getBootstrap()
+    return {
+      jobGuardActive: payload.diagnostics.jobGuardActive,
+      settings: payload.settings
+    }
+  })
+  assert.equal(bootstrap.jobGuardActive, true)
+  assert.equal(bootstrap.settings.version, 2)
+  assert.equal(bootstrap.settings.terminal.fontSize, 16)
+  assert.equal(bootstrap.settings.terminal.fontWeight, 400)
+  assert.equal(bootstrap.settings.terminal.fontWeightBold, 600)
+  assert.equal(bootstrap.settings.terminal.lineHeight, 1.15)
   assert.equal(
-    await page.evaluate(async () => {
-      const bootstrap = await window.ctd.getBootstrap()
-      return bootstrap.diagnostics.jobGuardActive
-    }),
-    true
+    bootstrap.settings.terminal.fontFamily,
+    'Cascadia Mono, Consolas, monospace'
   )
   assert.equal(page.url().startsWith('file:'), true)
   const contentSecurityPolicy = await page
@@ -177,7 +187,12 @@ try {
   await page.getByText('PTY 运行中').waitFor()
   await waitFor(async () => (await activeCount()) === 1, 'first PTY')
   await page.locator('.xterm').waitFor()
-  await page.locator('.xterm canvas').first().waitFor()
+  await page.locator('.xterm-screen').first().waitFor()
+  assert.equal(await page.locator('.xterm canvas').count(), 0)
+  assert.equal(
+    await page.locator('.xterm[class*="xterm-dom-renderer-owner"]').count(),
+    1
+  )
   await page.waitForFunction(() => {
     const terminalElement = document.querySelector('.xterm')
     return (
@@ -191,40 +206,38 @@ try {
     .first()
     .evaluate((host) => {
       const terminalElement = host.querySelector('.xterm')
-      const canvas = host.querySelector('canvas')
+      const screen = host.querySelector('.xterm-screen')
       if (!(terminalElement instanceof HTMLElement)) return null
-      if (!(canvas instanceof HTMLCanvasElement)) return null
+      if (!(screen instanceof HTMLElement)) return null
       const hostRect = host.getBoundingClientRect()
-      const canvasRect = canvas.getBoundingClientRect()
-      const canvasWidth = canvasRect.width
-      const canvasHeight = canvasRect.height
+      const screenRect = screen.getBoundingClientRect()
       return {
-        canvasLeft: canvasRect.left - hostRect.left,
-        canvasTop: canvasRect.top - hostRect.top,
-        canvasRight: hostRect.right - canvasRect.right,
-        canvasBottom: hostRect.bottom - canvasRect.bottom,
-        canvasWidth,
-        canvasHeight
+        rendererLeft: screenRect.left - hostRect.left,
+        rendererTop: screenRect.top - hostRect.top,
+        rendererRight: hostRect.right - screenRect.right,
+        rendererBottom: hostRect.bottom - screenRect.bottom,
+        rendererWidth: screenRect.width,
+        rendererHeight: screenRect.height
       }
     })
   assert.ok(terminalRendering, 'terminal renderer elements')
   assert.equal(
-    Math.round(terminalRendering.canvasLeft),
+    Math.round(terminalRendering.rendererLeft),
     0,
-    'terminal canvas left inset'
+    'terminal renderer left inset'
   )
   assert.equal(
-    Math.round(terminalRendering.canvasTop),
+    Math.round(terminalRendering.rendererTop),
     0,
-    'terminal canvas top inset'
+    'terminal renderer top inset'
   )
-  assert.ok(terminalRendering.canvasRight <= 18, 'terminal canvas right inset')
+  assert.ok(terminalRendering.rendererRight <= 24, 'terminal renderer right inset')
   assert.ok(
-    terminalRendering.canvasBottom <= 9,
-    `terminal canvas bottom inset: ${JSON.stringify(terminalRendering)}`
+    terminalRendering.rendererBottom <= 24,
+    `terminal renderer bottom inset: ${JSON.stringify(terminalRendering)}`
   )
-  assert.ok(terminalRendering.canvasWidth > 600, 'terminal canvas width')
-  assert.ok(terminalRendering.canvasHeight > 500, 'terminal canvas height')
+  assert.ok(terminalRendering.rendererWidth > 600, 'terminal renderer width')
+  assert.ok(terminalRendering.rendererHeight > 500, 'terminal renderer height')
   const initialGeometry = await page
     .locator('.terminal-host')
     .first()

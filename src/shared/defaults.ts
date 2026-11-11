@@ -1,5 +1,7 @@
 import type { AppSettings } from './types'
 
+export const DEFAULT_TERMINAL_FONT_FAMILY = 'Cascadia Mono, Consolas, monospace'
+
 export const DEFAULT_ANSI_PALETTE = [
   '#2d2924',
   '#e06c75',
@@ -20,7 +22,7 @@ export const DEFAULT_ANSI_PALETTE = [
 ] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: 1,
+  version: 2,
   themeMode: 'system',
   layoutMode: 'navigation',
   gui: {
@@ -30,11 +32,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     density: 'comfortable'
   },
   terminal: {
-    fontFamily: 'Cascadia Code, Consolas, monospace',
-    fontSize: 14,
+    fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+    fontSize: 16,
     fontWeight: 400,
     fontWeightBold: 600,
-    lineHeight: 1.25,
+    lineHeight: 1.15,
     padding: 14,
     cursorStyle: 'bar',
     cursorBlink: true,

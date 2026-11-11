@@ -41,6 +41,14 @@ function launchArguments(mode: SessionLaunchMode, loadProfile: boolean): string[
   return args
 }
 
+function isTerminalProtocolResponse(data: string): boolean {
+  return (
+    data === '\x1b[I' ||
+    data === '\x1b[O' ||
+    /^\x1b\[\??\d+;\d+R$/.test(data)
+  )
+}
+
 export class SessionService {
   private readonly pty: PtyManager
   private writeEventCount = 0
@@ -166,7 +174,9 @@ export class SessionService {
     if (!this.pty.write(sessionId, data)) {
       throw new Error('终端会话已结束。')
     }
-    if (data !== '\x1b[I' && data !== '\x1b[O') {
+    // Focus notifications and cursor-position reports are terminal protocol
+    // responses, not user keyboard input.
+    if (!isTerminalProtocolResponse(data)) {
       this.writeEventCount += 1
     }
   }

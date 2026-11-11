@@ -103,7 +103,7 @@ describe('AppStore', () => {
     writeFileSync(join(dataDir, 'settings.json'), '{broken', 'utf8')
 
     const store = createStore(dataDir)
-    expect(store.getSettings().version).toBe(1)
+    expect(store.getSettings().version).toBe(2)
     expect(store.getProjects()).toEqual([])
     expect(
       readdirSync(dataDir).some((name) => name.startsWith('settings.json.corrupt-'))

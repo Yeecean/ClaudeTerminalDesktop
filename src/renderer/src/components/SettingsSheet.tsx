@@ -285,8 +285,9 @@ function TerminalPreview({ settings }: { settings: AppSettings }): React.JSX.Ele
         style={{
           color: terminal.foreground,
           fontFamily: terminal.fontFamily,
-          fontSize: `${Math.min(terminal.fontSize, 15)}px`,
+          fontSize: `${terminal.fontSize}px`,
           fontWeight: terminal.fontWeight,
+          letterSpacing: '0px',
           lineHeight: terminal.lineHeight
         }}
       >
@@ -517,7 +518,7 @@ export function SettingsSheet({
                 >
                   <DraftInput
                     value={settings.terminal.fontFamily}
-                    placeholder="Cascadia Code, Consolas, monospace"
+                    placeholder="Cascadia Mono, Consolas, monospace"
                     onCommit={(fontFamily) => onPatch({ terminal: { fontFamily } })}
                   />
                   <div className="mt-2 flex flex-wrap gap-1">

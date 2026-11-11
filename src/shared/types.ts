@@ -30,7 +30,7 @@ export interface SessionRecord {
 }
 
 export interface AppSettings {
-  version: 1
+  version: 2
   themeMode: ThemeMode
   layoutMode: LayoutMode
   gui: {

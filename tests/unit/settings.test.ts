@@ -83,5 +83,72 @@ describe('settings normalization', () => {
     expect(settings.terminal.background).toBe('#112233')
     expect(settings.terminal.selectionBackground).toBe('#aabbcc80')
   })
+
+  it('migrates the complete legacy terminal font defaults to version 2', () => {
+    for (const fontFamily of [
+      'Cascadia Code',
+      'Cascadia Code, Consolas, monospace'
+    ]) {
+      const migrated = normalizeSettings({
+        version: 1,
+        terminal: {
+          fontFamily,
+          fontSize: 14,
+          fontWeight: 400,
+          fontWeightBold: 600,
+          lineHeight: 1.25,
+          padding: 14
+        }
+      })
+
+      expect(migrated.version).toBe(2)
+      expect(migrated.terminal.fontFamily).toBe(
+        DEFAULT_SETTINGS.terminal.fontFamily
+      )
+      expect(migrated.terminal.fontSize).toBe(DEFAULT_SETTINGS.terminal.fontSize)
+      expect(migrated.terminal.fontWeight).toBe(
+        DEFAULT_SETTINGS.terminal.fontWeight
+      )
+      expect(migrated.terminal.fontWeightBold).toBe(
+        DEFAULT_SETTINGS.terminal.fontWeightBold
+      )
+      expect(migrated.terminal.lineHeight).toBe(
+        DEFAULT_SETTINGS.terminal.lineHeight
+      )
+    }
+  })
+
+  it('preserves customized terminal font settings during migration', () => {
+    const customFont = normalizeSettings({
+      version: 1,
+      terminal: {
+        fontFamily: 'JetBrains Mono',
+        fontSize: 14,
+        fontWeight: 400,
+        fontWeightBold: 600,
+        lineHeight: 1.25,
+        padding: 14
+      }
+    })
+    expect(customFont.terminal.fontFamily).toBe('JetBrains Mono')
+    expect(customFont.terminal.fontSize).toBe(14)
+
+    const customSize = normalizeSettings({
+      version: 1,
+      terminal: {
+        fontFamily: 'Cascadia Code, Consolas, monospace',
+        fontSize: 15,
+        fontWeight: 400,
+        fontWeightBold: 600,
+        lineHeight: 1.25,
+        padding: 14
+      }
+    })
+    expect(customSize.terminal.fontFamily).toBe(
+      'Cascadia Code, Consolas, monospace'
+    )
+    expect(customSize.terminal.fontSize).toBe(15)
+    expect(customSize.terminal.lineHeight).toBe(1.25)
+  })
 })
 
