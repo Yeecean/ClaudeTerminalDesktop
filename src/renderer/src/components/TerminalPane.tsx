@@ -66,6 +66,11 @@ function terminalOptions(settings: AppSettings): ConstructorParameters<typeof Te
   }
 }
 
+function focusIsInSidebar(): boolean {
+  const activeElement = document.activeElement
+  return activeElement instanceof Element && Boolean(activeElement.closest('aside'))
+}
+
 export function TerminalPane({
   sessionId,
   settings,
@@ -206,7 +211,7 @@ export function TerminalPane({
     resizeObserver.observe(host)
     window.requestAnimationFrame(() => {
       fitAndResize()
-      if (visibleRef.current) terminal.focus()
+      if (visibleRef.current && !focusIsInSidebar()) terminal.focus()
     })
 
     return () => {
@@ -248,7 +253,7 @@ export function TerminalPane({
     if (!visible) return
     window.requestAnimationFrame(() => {
       fitAndResize()
-      terminalRef.current?.focus()
+      if (!focusIsInSidebar()) terminalRef.current?.focus()
       terminalRef.current?.clearTextureAtlas()
     })
   }, [visible])

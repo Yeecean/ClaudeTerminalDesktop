@@ -27,16 +27,20 @@ import { Toolbar } from './components/Toolbar'
 import { Button } from './components/ui/Button'
 import { applyGuiSettings, resolveDarkMode, systemPrefersDark } from './lib/theme'
 import { errorMessage } from './lib/utils'
-
-function activeStatus(session: SessionRecord): boolean {
-  return session.status === 'running' || session.status === 'starting'
-}
+import {
+  adjacentId,
+  adjacentProjectId,
+  isActiveSession,
+  preferredProjectSession,
+  visibleProjectSessions,
+  type NavigationDirection
+} from './lib/workspace-navigation'
 
 function initialProject(payload: BootstrapPayload): Project | undefined {
   return (
     payload.projects.find((project) =>
       payload.sessions.some(
-        (session) => session.projectId === project.id && activeStatus(session)
+        (session) => session.projectId === project.id && isActiveSession(session)
       )
     ) ?? payload.projects[0]
   )
@@ -65,6 +69,8 @@ export function App(): React.JSX.Element {
   const pendingTerminalData = useRef(new Map<string, string>())
   const launchingRef = useRef(false)
   const selectedProjectRef = useRef<string | null>(null)
+  const lastSessionByProjectRef = useRef(new Map<string, string>())
+  const selectionRevisionRef = useRef(0)
   const runtimeStartedAtRef = useRef(new Date().toISOString())
 
   selectedProjectRef.current = selectedProjectId
@@ -88,12 +94,17 @@ export function App(): React.JSX.Element {
         setDiagnostics(payload.diagnostics)
         const project = initialProject(payload)
         setSelectedProjectId(project?.id ?? null)
-        const runningSession = project
-          ? payload.sessions.find(
-              (session) => session.projectId === project.id && activeStatus(session)
+        const session = project
+          ? preferredProjectSession(
+              project.id,
+              payload.sessions,
+              runtimeStartedAtRef.current
             )
-          : undefined
-        setSelectedSessionId(runningSession?.id ?? null)
+          : null
+        setSelectedSessionId(session?.id ?? null)
+        if (session) {
+          lastSessionByProjectRef.current.set(session.projectId, session.id)
+        }
         setLoading(false)
       })
       .catch((error: unknown) => {
@@ -169,11 +180,20 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     if (selectedSessionId || !selectedProjectId) return
-    const session = sessions.find(
-      (item) => item.projectId === selectedProjectId && activeStatus(item)
+    const session = preferredProjectSession(
+      selectedProjectId,
+      sessions,
+      runtimeStartedAtRef.current,
+      lastSessionByProjectRef.current.get(selectedProjectId)
     )
     if (session) setSelectedSessionId(session.id)
   }, [selectedProjectId, selectedSessionId, sessions])
+
+  useEffect(() => {
+    const session = sessions.find((item) => item.id === selectedSessionId)
+    if (!session) return
+    lastSessionByProjectRef.current.set(session.projectId, session.id)
+  }, [selectedSessionId, sessions])
 
   useEffect(() => {
     return () => {
@@ -225,19 +245,59 @@ export function App(): React.JSX.Element {
 
   const chooseProject = useCallback(
     (projectId: string) => {
+      selectionRevisionRef.current += 1
       setSelectedProjectId(projectId)
-      const firstActive = sessions
-        .filter((session) => session.projectId === projectId)
-        .find(activeStatus)
-      setSelectedSessionId(firstActive?.id ?? null)
+      const session = preferredProjectSession(
+        projectId,
+        sessions,
+        runtimeStartedAtRef.current,
+        lastSessionByProjectRef.current.get(projectId)
+      )
+      setSelectedSessionId(session?.id ?? null)
     },
     [sessions]
+  )
+
+  const chooseSession = useCallback((session: SessionRecord) => {
+    selectionRevisionRef.current += 1
+    lastSessionByProjectRef.current.set(session.projectId, session.id)
+    setSelectedProjectId(session.projectId)
+    setSelectedSessionId(session.id)
+  }, [])
+
+  const switchProject = useCallback(
+    (direction: NavigationDirection) => {
+      const projectId = adjacentProjectId(
+        projects,
+        selectedProjectRef.current,
+        direction
+      )
+      if (projectId) chooseProject(projectId)
+    },
+    [chooseProject, projects]
+  )
+
+  const switchSession = useCallback(
+    (direction: NavigationDirection) => {
+      const projectId = selectedProjectRef.current
+      if (!projectId) return
+      const candidates = visibleProjectSessions(
+        projectId,
+        sessions,
+        runtimeStartedAtRef.current
+      )
+      const sessionId = adjacentId(candidates, selectedSessionId, direction)
+      const session = candidates.find((item) => item.id === sessionId)
+      if (session) chooseSession(session)
+    },
+    [chooseSession, selectedSessionId, sessions]
   )
 
   const addProject = useCallback(async () => {
     try {
       const project = await window.ctd.addProject()
       if (!project) return
+      selectionRevisionRef.current += 1
       setSelectedProjectId(project.id)
       setSelectedSessionId(null)
       notify(`已添加项目「${project.name}」。`)
@@ -251,6 +311,7 @@ export function App(): React.JSX.Element {
       if (launchingRef.current) return
       launchingRef.current = true
       setLaunching(true)
+      const selectionRevision = ++selectionRevisionRef.current
       setSelectedProjectId(projectId)
       try {
         const result = await window.ctd.createSession({
@@ -267,7 +328,16 @@ export function App(): React.JSX.Element {
               )
             : [...current, result.session]
         })
-        setSelectedSessionId(result.session.id)
+        if (
+          selectionRevision === selectionRevisionRef.current &&
+          selectedProjectRef.current === projectId
+        ) {
+          setSelectedSessionId(result.session.id)
+          lastSessionByProjectRef.current.set(
+            result.session.projectId,
+            result.session.id
+          )
+        }
         if (result.warning) notify(result.warning, 'warning')
       } catch (error) {
         notify(errorMessage(error), 'error')
@@ -306,7 +376,7 @@ export function App(): React.JSX.Element {
   const requestRemoveProject = useCallback(
     (project: Project) => {
       const activeCount = sessions.filter(
-        (session) => session.projectId === project.id && activeStatus(session)
+        (session) => session.projectId === project.id && isActiveSession(session)
       ).length
       setConfirmRequest({
         title: '移除这个项目？',
@@ -318,10 +388,12 @@ export function App(): React.JSX.Element {
         danger: true,
         action: async () => {
           await window.ctd.removeProject(project.id)
+          selectionRevisionRef.current += 1
           if (selectedProjectRef.current === project.id) {
             setSelectedProjectId(null)
             setSelectedSessionId(null)
           }
+          lastSessionByProjectRef.current.delete(project.id)
           notify('项目已从工作区移除。')
         }
       })
@@ -332,13 +404,13 @@ export function App(): React.JSX.Element {
   const selectedProject = projects.find((project) => project.id === selectedProjectId)
   const selectedSession = sessions.find((session) => session.id === selectedSessionId)
   const mountedSessions = sessions.filter(
-    (session) => activeStatus(session) || session.id === selectedSessionId
+    (session) => isActiveSession(session) || session.id === selectedSessionId
   )
   const visibleIds = new Set<string>()
 
   if (settings?.layoutMode === 'parallel') {
     for (const session of mountedSessions) {
-      if (activeStatus(session) && session.projectId === selectedProjectId) {
+      if (isActiveSession(session) && session.projectId === selectedProjectId) {
         visibleIds.add(session.id)
       }
     }
@@ -352,6 +424,7 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (settingsOpen || confirmRequest) return
       if (event.ctrlKey && event.code === 'Comma') {
         event.preventDefault()
         setSettingsOpen(true)
@@ -369,11 +442,41 @@ export function App(): React.JSX.Element {
         updateSettings({
           layoutMode: settings.layoutMode === 'focus' ? 'navigation' : 'focus'
         })
+        return
+      }
+      if (event.ctrlKey && event.shiftKey) {
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault()
+          event.stopPropagation()
+          switchProject(event.key === 'ArrowLeft' ? -1 : 1)
+          return
+        }
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          event.preventDefault()
+          event.stopPropagation()
+          switchSession(event.key === 'ArrowUp' ? -1 : 1)
+          return
+        }
+      }
+      if (settings && event.key === 'F6' && settings.layoutMode !== 'focus') {
+        event.preventDefault()
+        event.stopPropagation()
+        document
+          .querySelector<HTMLElement>('aside[aria-label="项目与会话导航"]')
+          ?.focus()
       }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [settings, startSession, updateSettings])
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [
+    confirmRequest,
+    settings,
+    settingsOpen,
+    startSession,
+    switchProject,
+    switchSession,
+    updateSettings
+  ])
 
   if (fatalError) {
     return (
@@ -425,13 +528,12 @@ export function App(): React.JSX.Element {
             runtimeStartedAt={runtimeStartedAtRef.current}
             diagnostics={diagnostics}
             onSelectProject={chooseProject}
-            onSelectSession={(session) => {
-              setSelectedProjectId(session.projectId)
-              setSelectedSessionId(session.id)
-            }}
+            onSelectSession={chooseSession}
             onAddProject={() => void addProject()}
             onNewSession={(projectId) => void startSession(projectId, 'new')}
             onRemoveProject={requestRemoveProject}
+            onSwitchProject={switchProject}
+            onSwitchSession={switchSession}
             onOpenSettings={() => setSettingsOpen(true)}
             onCloseSidebar={() => updateSettings({ layoutMode: 'focus' })}
           />
@@ -448,7 +550,8 @@ export function App(): React.JSX.Element {
               updateSettings({ layoutMode })
               if (layoutMode === 'parallel' && !selectedSessionId) {
                 const firstActive = mountedSessions.find(
-                  (session) => activeStatus(session) && session.projectId === selectedProjectId
+                  (session) =>
+                    isActiveSession(session) && session.projectId === selectedProjectId
                 )
                 if (firstActive) setSelectedSessionId(firstActive.id)
               }

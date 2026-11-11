@@ -6,12 +6,18 @@ import {
   TerminalSquare,
   Trash2
 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import type {
   EnvironmentDiagnostic,
   Project,
   SessionRecord
 } from '../../../shared/types'
 import { cn } from '../lib/utils'
+import {
+  isActiveSession,
+  visibleProjectSessions,
+  type NavigationDirection
+} from '../lib/workspace-navigation'
 import { Button } from './ui/Button'
 
 interface SidebarProps {
@@ -26,6 +32,8 @@ interface SidebarProps {
   onAddProject: () => void
   onNewSession: (projectId: string) => void
   onRemoveProject: (project: Project) => void
+  onSwitchProject: (direction: NavigationDirection) => void
+  onSwitchSession: (direction: NavigationDirection) => void
   onOpenSettings: () => void
   onCloseSidebar: () => void
 }
@@ -56,11 +64,50 @@ export function Sidebar({
   onAddProject,
   onNewSession,
   onRemoveProject,
+  onSwitchProject,
+  onSwitchSession,
   onOpenSettings,
   onCloseSidebar
 }: SidebarProps): React.JSX.Element {
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    sidebarRef.current
+      ?.querySelector<HTMLElement>(
+        '[data-session-id][aria-current="true"], [data-project-id][aria-current="true"]'
+      )
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [selectedProjectId, selectedSessionId])
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    let handled = true
+    if (event.key === 'ArrowLeft') {
+      onSwitchProject(-1)
+    } else if (event.key === 'ArrowRight') {
+      onSwitchProject(1)
+    } else if (event.key === 'ArrowUp') {
+      onSwitchSession(-1)
+    } else if (event.key === 'ArrowDown') {
+      onSwitchSession(1)
+    } else {
+      handled = false
+    }
+    if (!handled) return
+    event.preventDefault()
+    requestAnimationFrame(() => {
+      sidebarRef.current?.focus({ preventScroll: true })
+    })
+  }
+
   return (
-    <aside className="flex h-full w-[244px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--sidebar-bg)]">
+    <aside
+      ref={sidebarRef}
+      tabIndex={0}
+      aria-label="项目与会话导航"
+      onKeyDown={handleKeyDown}
+      className="flex h-full w-[244px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--sidebar-bg)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]"
+    >
       <div className="flex h-12 items-center justify-between px-3.5">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
@@ -107,20 +154,12 @@ export function Sidebar({
 
         <div className="space-y-1.5">
           {projects.map((project) => {
-            const projectSessions = sessions
-              .filter((session) => session.projectId === project.id)
-              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-            const active = projectSessions.filter(
-              (session) => session.status === 'running' || session.status === 'starting'
+            const visibleSessions = visibleProjectSessions(
+              project.id,
+              sessions,
+              runtimeStartedAt
             )
-            const ended = projectSessions
-              .filter(
-                (session) =>
-                  (session.status === 'exited' || session.status === 'failed') &&
-                  Boolean(session.endedAt && session.endedAt >= runtimeStartedAt)
-              )
-              .slice(-2)
-            const visibleSessions = [...active, ...ended]
+            const active = visibleSessions.filter(isActiveSession)
             const projectActive = project.id === selectedProjectId
 
             return (
@@ -136,6 +175,8 @@ export function Sidebar({
                   <button
                     type="button"
                     onClick={() => onSelectProject(project.id)}
+                    data-project-id={project.id}
+                    aria-current={projectActive ? 'true' : undefined}
                     className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                   >
                     <Folder
@@ -183,6 +224,8 @@ export function Sidebar({
                         key={session.id}
                         type="button"
                         onClick={() => onSelectSession(session)}
+                        data-session-id={session.id}
+                        aria-current={isSelected ? 'true' : undefined}
                         title={`${session.title} · ${statusLabel(session.status)}`}
                         className={cn(
                           'group/session flex h-[var(--session-row-height)] w-full items-center gap-2 rounded-md px-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
@@ -228,6 +271,14 @@ export function Sidebar({
             )
           })}
         </div>
+      </div>
+
+      <div
+        className="flex items-center justify-between border-t border-[var(--border-subtle)] px-3 py-1.5 text-[8.5px] text-[var(--text-faint)]"
+        title="侧栏聚焦时使用方向键；全局使用 Ctrl+Shift+方向键"
+      >
+        <span>←/→ 项目</span>
+        <span>↑/↓ 会话</span>
       </div>
 
       <div className="border-t border-[var(--border-subtle)] p-2.5">

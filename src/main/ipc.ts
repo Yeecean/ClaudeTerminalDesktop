@@ -21,6 +21,7 @@ interface IpcDependencies {
   store: AppStore
   sessions: SessionService
   getDiagnostics: () => Promise<EnvironmentDiagnostic>
+  ensureDefaultWorkspace: () => void
   requestQuit: () => Promise<void>
 }
 
@@ -75,7 +76,14 @@ function assertCreateInput(value: unknown): CreateSessionInput {
 }
 
 export function registerIpc(dependencies: IpcDependencies): void {
-  const { getWindow, store, sessions, getDiagnostics, requestQuit } = dependencies
+  const {
+    getWindow,
+    store,
+    sessions,
+    getDiagnostics,
+    ensureDefaultWorkspace,
+    requestQuit
+  } = dependencies
 
   const handle = <Args extends unknown[], Result>(
     channel: string,
@@ -123,6 +131,7 @@ export function registerIpc(dependencies: IpcDependencies): void {
     if (!store.getProject(id)) throw new Error('找不到该删除的项目。')
     await sessions.endProject(id)
     store.removeProject(id)
+    ensureDefaultWorkspace()
     getWindow()?.webContents.send(IPC.stateChanged, {
       projects: store.getProjects(),
       sessions: store.getSessions()

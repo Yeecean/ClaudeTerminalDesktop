@@ -119,7 +119,11 @@ try {
     electronApp.evaluate(() => globalThis.__CTD_TEST__.activePids())
 
   await page.waitForLoadState('domcontentloaded')
-  await page.getByText('从一个项目开始').waitFor()
+  await page.getByRole('button', { name: '启动新会话', exact: true }).waitFor()
+  assert.equal(
+    (await page.locator('aside').innerText()).includes('默认工作区'),
+    true
+  )
   assert.equal(await page.title(), 'Claude Terminal Desktop')
   assert.equal(
     await page.evaluate(async () => {
@@ -154,7 +158,7 @@ try {
     })
   }, projectPath)
 
-  await page.getByRole('button', { name: '添加项目目录' }).click()
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
   await page.getByText('准备开始新的终端会话').waitFor()
   assert.equal(await page.locator('aside').innerText().then((text) => text.includes('ccDesktop')), true)
   await page.screenshot({ path: join(screenshots, '01-project-added.png') })
@@ -229,6 +233,10 @@ try {
   await waitFor(async () => (await activeCount()) === 2, 'second PTY')
   const pidsBeforeSwitch = await activePids()
   await page.locator('aside button[title^="Claude 1"]').click()
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 1'),
+    'direct session selection'
+  )
   assert.equal(await activeCount(), 2)
   assert.deepEqual((await activePids()).sort(), pidsBeforeSwitch.sort())
 
@@ -257,6 +265,54 @@ try {
       (element) => element.dataset.ctdBufferedProbe
     ),
     'preserved'
+  )
+
+  const currentProject = () =>
+    page
+      .locator('aside button[data-project-id][aria-current="true"]')
+      .innerText()
+  assert.equal((await currentProject()).includes('ccDesktop'), true)
+  await page.locator('aside').focus()
+  await page.keyboard.press('ArrowLeft')
+  await waitFor(
+    async () => (await currentProject()).includes('默认工作区'),
+    'sidebar ArrowLeft project navigation'
+  )
+  await page.keyboard.press('ArrowRight')
+  await waitFor(
+    async () => (await currentProject()).includes('ccDesktop'),
+    'sidebar ArrowRight project navigation'
+  )
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 1'),
+    'remembered project conversation'
+  )
+
+  await page.keyboard.press('Control+Shift+ArrowRight')
+  await waitFor(
+    async () => (await currentProject()).includes('second-project'),
+    'global project navigation'
+  )
+  await page.keyboard.press('Control+Shift+ArrowLeft')
+  await waitFor(
+    async () => (await currentProject()).includes('ccDesktop'),
+    'global project navigation back'
+  )
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 1'),
+    'remembered conversation after global navigation'
+  )
+
+  await page.locator('aside').focus()
+  await page.keyboard.press('ArrowDown')
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 2'),
+    'sidebar ArrowDown session navigation'
+  )
+  await page.keyboard.press('ArrowUp')
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 1'),
+    'sidebar ArrowUp session navigation'
   )
 
   await page.getByTitle('并行模式').click()
@@ -445,7 +501,7 @@ try {
   assert.deepEqual(pageErrors, [])
   assert.equal(existsSync(join(artifactRoot, 'screenshots', '05-dark-workspace.png')), true)
   console.log(
-    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: CSP and navigation guards, IPC page boundary, process guard, project/session buffering, two PTYs with unchanged PIDs, Claude descendant discovery, parallel layout, search, live settings, tray lifecycle, process-tree cleanup, restart persistence.`
+    `E2E smoke passed${packagedExecutable ? ' (packaged)' : ''}: default workspace, sidebar/global project and session navigation, CSP and navigation guards, IPC page boundary, process guard, project/session buffering, two PTYs with unchanged PIDs, Claude descendant discovery, parallel layout, search, live settings, tray lifecycle, process-tree cleanup, restart persistence.`
   )
 } catch (error) {
   if (electronApp && !closed) {

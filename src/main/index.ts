@@ -7,7 +7,7 @@ import {
   session,
   Tray
 } from 'electron'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { collectEnvironmentDiagnostics } from './diagnostics'
 import { registerIpc } from './ipc'
@@ -49,6 +49,29 @@ function resourcePath(name: string): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'resources', name)
     : join(__dirname, '../../resources', name)
+}
+
+function defaultWorkspacePath(): string {
+  if (testMode) return join(app.getPath('userData'), 'default-workspace')
+  if (app.isPackaged) {
+    return join(
+      app.getPath('documents'),
+      'Claude Terminal Desktop',
+      'Default Workspace'
+    )
+  }
+  return join(app.getAppPath(), 'default-workspace')
+}
+
+function ensureDefaultWorkspaceProject(): void {
+  if (!store || store.getProjects().length > 0) return
+  try {
+    const workspacePath = defaultWorkspacePath()
+    mkdirSync(workspacePath, { recursive: true })
+    store.addProject(workspacePath, '默认工作区')
+  } catch (error) {
+    console.error('无法创建默认工作区。', error)
+  }
 }
 
 function sendToRenderer(channel: string, payload: unknown): void {
@@ -257,6 +280,7 @@ async function initialize(): Promise<void> {
   await jobGuard.ready
 
   store = new AppStore(app.getPath('userData'))
+  ensureDefaultWorkspaceProject()
   sessionService = new SessionService(
     store,
     {
@@ -305,6 +329,7 @@ async function initialize(): Promise<void> {
         jobGuard?.error() ?? null
       )
     },
+    ensureDefaultWorkspace: ensureDefaultWorkspaceProject,
     requestQuit
   })
 

@@ -101,7 +101,11 @@ try {
   const page = await electronApp.firstWindow()
   page.setDefaultTimeout(10000)
   await page.waitForLoadState('domcontentloaded')
-  await page.getByText('从一个项目开始').waitFor()
+  await page.getByRole('button', { name: '启动新会话', exact: true }).waitFor()
+  assert.equal(
+    (await page.locator('aside').innerText()).includes('默认工作区'),
+    true
+  )
   const diagnostics = await page.evaluate(async () => {
     const bootstrap = await window.ctd.getBootstrap()
     return {
@@ -118,7 +122,7 @@ try {
       filePaths: [selectedPath]
     })
   }, projectPath)
-  await page.getByRole('button', { name: '添加项目目录' }).click()
+  await page.getByRole('button', { name: '添加项目', exact: true }).click()
   await page.getByRole('button', { name: '启动新会话' }).click()
   await page.locator('.xterm').waitFor()
   await waitFor(
