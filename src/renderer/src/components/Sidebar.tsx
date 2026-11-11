@@ -72,11 +72,14 @@ export function Sidebar({
   const sidebarRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    sidebarRef.current
-      ?.querySelector<HTMLElement>(
-        '[data-session-id][aria-current="true"], [data-project-id][aria-current="true"]'
-      )
-      ?.scrollIntoView({ block: 'nearest' })
+    const selectedSession = sidebarRef.current?.querySelector<HTMLElement>(
+      '[data-session-id][aria-current="true"]'
+    )
+    const selectedProject = sidebarRef.current?.querySelector<HTMLElement>(
+      '[data-project-id][aria-current="true"]'
+    )
+    const selected = selectedSession ?? selectedProject
+    selected?.scrollIntoView({ block: 'nearest' })
   }, [selectedProjectId, selectedSessionId])
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {

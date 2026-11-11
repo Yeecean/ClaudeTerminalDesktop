@@ -27,6 +27,7 @@ import { Toolbar } from './components/Toolbar'
 import { Button } from './components/ui/Button'
 import { applyGuiSettings, resolveDarkMode, systemPrefersDark } from './lib/theme'
 import { errorMessage } from './lib/utils'
+import { setShortcutHandler } from './lib/shortcut-router'
 import {
   adjacentId,
   adjacentProjectId,
@@ -68,11 +69,13 @@ export function App(): React.JSX.Element {
   const terminalWriters = useRef(new Map<string, (data: string) => void>())
   const pendingTerminalData = useRef(new Map<string, string>())
   const launchingRef = useRef(false)
+  const projectsRef = useRef<Project[]>([])
   const selectedProjectRef = useRef<string | null>(null)
   const lastSessionByProjectRef = useRef(new Map<string, string>())
   const selectionRevisionRef = useRef(0)
   const runtimeStartedAtRef = useRef(new Date().toISOString())
 
+  projectsRef.current = projects
   selectedProjectRef.current = selectedProjectId
 
   const notify = useCallback((text: string, tone: ToastMessage['tone'] = 'success') => {
@@ -298,6 +301,11 @@ export function App(): React.JSX.Element {
       const project = await window.ctd.addProject()
       if (!project) return
       selectionRevisionRef.current += 1
+      setProjects((current) =>
+        current.some((item) => item.id === project.id)
+          ? current
+          : [...current, project]
+      )
       setSelectedProjectId(project.id)
       setSelectedSessionId(null)
       notify(`已添加项目「${project.name}」。`)
@@ -320,6 +328,9 @@ export function App(): React.JSX.Element {
           cols: Math.max(70, Math.floor((window.innerWidth - 330) / 8.2)),
           rows: Math.max(20, Math.floor((window.innerHeight - 150) / 22))
         })
+        if (!projectsRef.current.some((project) => project.id === result.session.projectId)) {
+          return
+        }
         setSessions((current) => {
           const exists = current.some((session) => session.id === result.session.id)
           return exists
@@ -423,6 +434,30 @@ export function App(): React.JSX.Element {
   const canLaunch = Boolean(selectedProjectId) && !launching
 
   useEffect(() => {
+    setShortcutHandler((event) => {
+      if (settingsOpen || confirmRequest) return false
+      if (event.ctrlKey && event.shiftKey) {
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          switchProject(event.key === 'ArrowLeft' ? -1 : 1)
+          return true
+        }
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          switchSession(event.key === 'ArrowUp' ? -1 : 1)
+          return true
+        }
+      }
+      if (settings && event.key === 'F6' && settings.layoutMode !== 'focus') {
+        document
+          .querySelector<HTMLElement>('aside[aria-label="项目与会话导航"]')
+          ?.focus()
+        return true
+      }
+      return false
+    })
+    return () => setShortcutHandler(null)
+  }, [confirmRequest, settings, settingsOpen, switchProject, switchSession])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (settingsOpen || confirmRequest) return
       if (event.ctrlKey && event.code === 'Comma') {
@@ -444,39 +479,10 @@ export function App(): React.JSX.Element {
         })
         return
       }
-      if (event.ctrlKey && event.shiftKey) {
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-          event.preventDefault()
-          event.stopPropagation()
-          switchProject(event.key === 'ArrowLeft' ? -1 : 1)
-          return
-        }
-        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-          event.preventDefault()
-          event.stopPropagation()
-          switchSession(event.key === 'ArrowUp' ? -1 : 1)
-          return
-        }
-      }
-      if (settings && event.key === 'F6' && settings.layoutMode !== 'focus') {
-        event.preventDefault()
-        event.stopPropagation()
-        document
-          .querySelector<HTMLElement>('aside[aria-label="项目与会话导航"]')
-          ?.focus()
-      }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [
-    confirmRequest,
-    settings,
-    settingsOpen,
-    startSession,
-    switchProject,
-    switchSession,
-    updateSettings
-  ])
+  }, [confirmRequest, settings, settingsOpen, startSession, updateSettings])
 
   if (fatalError) {
     return (

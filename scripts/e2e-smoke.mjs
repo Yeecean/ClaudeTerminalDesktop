@@ -117,6 +117,12 @@ try {
     electronApp.evaluate(() => globalThis.__CTD_TEST__.activeCount())
   const activePids = () =>
     electronApp.evaluate(() => globalThis.__CTD_TEST__.activePids())
+  const writeEventCount = () =>
+    electronApp.evaluate(() => globalThis.__CTD_TEST__.writeEventCount())
+  const currentProject = () =>
+    page
+      .locator('aside button[data-project-id][aria-current="true"]')
+      .innerText()
 
   await page.waitForLoadState('domcontentloaded')
   await page.getByRole('button', { name: '启动新会话', exact: true }).waitFor()
@@ -159,6 +165,10 @@ try {
   }, projectPath)
 
   await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  await waitFor(
+    async () => (await currentProject()).includes('ccDesktop'),
+    'project selection after add'
+  )
   await page.getByText('准备开始新的终端会话').waitFor()
   assert.equal(await page.locator('aside').innerText().then((text) => text.includes('ccDesktop')), true)
   await page.screenshot({ path: join(screenshots, '01-project-added.png') })
@@ -247,6 +257,10 @@ try {
     })
   }, secondProjectPath)
   await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  await waitFor(
+    async () => (await currentProject()).includes('second-project'),
+    'second project selection after add'
+  )
   await page.getByText('准备开始新的终端会话').waitFor()
   assert.equal(await page.locator('.terminal-host').count(), 2)
   const firstTerminalHost = page.locator('.terminal-host').first()
@@ -267,10 +281,6 @@ try {
     'preserved'
   )
 
-  const currentProject = () =>
-    page
-      .locator('aside button[data-project-id][aria-current="true"]')
-      .innerText()
   assert.equal((await currentProject()).includes('ccDesktop'), true)
   await page.locator('aside').focus()
   await page.keyboard.press('ArrowLeft')
@@ -288,26 +298,90 @@ try {
     'remembered project conversation'
   )
 
+  await page.locator('.xterm:visible').first().click()
+  const writesBeforeArrow = await writeEventCount()
+  await page.keyboard.press('ArrowLeft')
+  await waitFor(
+    async () => (await writeEventCount()) > writesBeforeArrow,
+    'terminal ArrowLeft reaches PTY'
+  )
+  await page.waitForTimeout(300)
+  const writesBeforeGlobalNavigation = await writeEventCount()
   await page.keyboard.press('Control+Shift+ArrowRight')
   await waitFor(
     async () => (await currentProject()).includes('second-project'),
     'global project navigation'
+  )
+  await page.waitForTimeout(200)
+  assert.equal(
+    await writeEventCount(),
+    writesBeforeGlobalNavigation,
+    'global project navigation must not write to PTY'
   )
   await page.keyboard.press('Control+Shift+ArrowLeft')
   await waitFor(
     async () => (await currentProject()).includes('ccDesktop'),
     'global project navigation back'
   )
+  assert.equal(
+    await writeEventCount(),
+    writesBeforeGlobalNavigation,
+    'global project navigation back must not write to PTY'
+  )
   await waitFor(
     async () => (await page.locator('header').innerText()).includes('Claude 1'),
     'remembered conversation after global navigation'
   )
 
-  await page.locator('aside').focus()
+  await page.locator('.xterm:visible').first().click()
+  const writesBeforeGlobalSessionNavigation = await writeEventCount()
+  await page.keyboard.press('Control+Shift+ArrowDown')
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 2'),
+    'global session navigation down'
+  )
+  assert.equal(
+    await writeEventCount(),
+    writesBeforeGlobalSessionNavigation,
+    'global session navigation down must not write to PTY'
+  )
+  await page.keyboard.press('Control+Shift+ArrowUp')
+  await waitFor(
+    async () => (await page.locator('header').innerText()).includes('Claude 1'),
+    'global session navigation up'
+  )
+  assert.equal(
+    await writeEventCount(),
+    writesBeforeGlobalSessionNavigation,
+    'global session navigation up must not write to PTY'
+  )
+
+  await page.locator('.xterm:visible').first().click()
+  const writesBeforeF6 = await writeEventCount()
+  await page.keyboard.press('F6')
+  await waitFor(
+    () =>
+      page.evaluate(
+        () => document.activeElement?.getAttribute('aria-label') ?? null
+      ).then((label) => label === '项目与会话导航'),
+    'F6 focuses the sidebar'
+  )
+  assert.equal(
+    await writeEventCount(),
+    writesBeforeF6,
+    'F6 must not write to PTY'
+  )
   await page.keyboard.press('ArrowDown')
   await waitFor(
     async () => (await page.locator('header').innerText()).includes('Claude 2'),
     'sidebar ArrowDown session navigation'
+  )
+  assert.equal(
+    await page.evaluate(
+      () => document.activeElement?.getAttribute('aria-label') ?? null
+    ),
+    '项目与会话导航',
+    'terminal must not steal focus during sidebar navigation'
   )
   await page.keyboard.press('ArrowUp')
   await waitFor(
@@ -413,7 +487,8 @@ try {
   const endedTree = [endedPid, ...descendantPids([endedPid], processesBeforeEnd)]
   await waitFor(
     () => endedTree.every((pid) => !processIsAlive(pid)),
-    'PTY process tree cleanup'
+    'PTY process tree cleanup',
+    15000
   )
 
   assert.equal(
@@ -457,7 +532,8 @@ try {
   await waitFor(() => closed, 'application quit', 10000)
   await waitFor(
     () => remainingTree.every((pid) => !processIsAlive(pid)),
-    'remaining PTY process tree cleanup'
+    'remaining PTY process tree cleanup',
+    15000
   )
 
   closed = false

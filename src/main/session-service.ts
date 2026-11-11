@@ -43,6 +43,7 @@ function launchArguments(mode: SessionLaunchMode, loadProfile: boolean): string[
 
 export class SessionService {
   private readonly pty: PtyManager
+  private writeEventCount = 0
 
   constructor(
     private readonly store: AppStore,
@@ -131,6 +132,12 @@ export class SessionService {
         throw new Error('无法将终端进程纳入崩溃清理保护。')
       }
     }
+    if (!this.store.getProject(project.id)) {
+      this.pty.kill(session.id)
+      this.store.removeSession(session.id)
+      this.callbacks.onStateChanged()
+      throw new Error('项目已在会话启动期间被移除。')
+    }
     writeFileSync(gatePath, processGuardApplied ? 'READY\n' : 'SKIP\n', 'utf8')
 
     const running = this.store.updateSession(session.id, {
@@ -158,6 +165,9 @@ export class SessionService {
   write(sessionId: string, data: string): void {
     if (!this.pty.write(sessionId, data)) {
       throw new Error('终端会话已结束。')
+    }
+    if (data !== '\x1b[I' && data !== '\x1b[O') {
+      this.writeEventCount += 1
     }
   }
 
@@ -196,6 +206,10 @@ export class SessionService {
 
   activeProcessIds(): number[] {
     return this.pty.activePids()
+  }
+
+  testWriteEventCount(): number {
+    return this.writeEventCount
   }
 
   private async stopSessions(

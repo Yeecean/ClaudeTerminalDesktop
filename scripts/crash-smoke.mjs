@@ -123,6 +123,14 @@ try {
     })
   }, projectPath)
   await page.getByRole('button', { name: '添加项目', exact: true }).click()
+  await waitFor(
+    () =>
+      page
+        .locator('aside button[data-project-id][aria-current="true"]')
+        .innerText()
+        .then((text) => text.includes('ccDesktop')),
+    'project selection after add'
+  )
   await page.getByRole('button', { name: '启动新会话' }).click()
   await page.locator('.xterm').waitFor()
   await waitFor(
@@ -131,19 +139,26 @@ try {
   )
 
   const roots = await electronApp.evaluate(() => globalThis.__CTD_TEST__.activePids())
-  const snapshot = processSnapshot()
-  const descendants = descendantPids(roots, snapshot)
+  let snapshot = []
+  let descendants = []
+  await waitFor(
+    () => {
+      snapshot = processSnapshot()
+      descendants = descendantPids(roots, snapshot)
+      return (
+        descendants.length > 0 &&
+        snapshot.some(
+          (processEntry) =>
+            descendants.includes(processEntry.ProcessId) &&
+            /claude/i.test(processEntry.CommandLine ?? '')
+        )
+      )
+    },
+    'Claude CLI descendant start',
+    15000
+  )
   const tree = [...roots, ...descendants]
   trackedTree = tree
-  assert.ok(descendants.length > 0, 'expected live PTY descendants')
-  assert.ok(
-    snapshot.some(
-      (processEntry) =>
-        descendants.includes(processEntry.ProcessId) &&
-        /claude/i.test(processEntry.CommandLine ?? '')
-    ),
-    'expected a live Claude CLI descendant'
-  )
 
   const mainPid = await electronApp.evaluate(() => process.pid)
   const crashClosed = electronApp.waitForEvent('close').catch(() => {})

@@ -311,6 +311,7 @@ async function initialize(): Promise<void> {
       value: {
         activeCount: () => sessionService?.activeCount() ?? 0,
         activePids: () => sessionService?.activeProcessIds() ?? [],
+        writeEventCount: () => sessionService?.testWriteEventCount() ?? 0,
         requestQuit: () => requestQuit()
       },
       configurable: true
