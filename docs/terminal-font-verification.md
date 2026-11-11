@@ -58,5 +58,5 @@
 ## 尚未解决
 
 - WebGL 的具体 atlas/DPR 源码级根因尚未继续定位；当前以默认 DOM renderer 规避，后续应单独验证 WebGL 兼容性后再决定是否恢复。
-- 本机未安装 Cascadia Mono，实际回退到 Consolas；Powerline 私有区字形（U+E0B0/U+E0B2）显示为缺字方框。这是字体覆盖问题，不是终端渲染错位。
+- 默认 Cascadia Mono 不包含 Powerline 私有区字形（U+E0B0/U+E0B2），截图中显示为缺字方框；需要安装 Nerd Font 或在字体回退链中加入支持 Powerline 的字体。这是字体覆盖问题，不是终端渲染错位。
 - 未覆盖所有 CJK 组合字符、Emoji ZWJ 序列及全部窗口缩放比例。
